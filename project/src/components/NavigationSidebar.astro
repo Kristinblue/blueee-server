@@ -1,0 +1,1140 @@
+---
+import notes from "../generated/notes.json";
+import NavigationTree from "./NavigationTree.astro";
+import TableOfContents from "./TableOfContents.astro";
+import type { TocHeading } from "../lib/toc";
+
+interface Props {
+  /** 传入即为笔记页：侧栏展示本文标题目录，而不是全站目录树 */
+  toc?: TocHeading[];
+  tocTitle?: string;
+}
+
+const { toc, tocTitle } = Astro.props;
+
+interface NoteSummary {
+  slug: string;
+  title: string;
+  url: string;
+}
+
+interface TreeEntry {
+  name: string;
+  type: "folder" | "note";
+  title?: string;
+  url?: string;
+  children?: TreeEntry[];
+}
+
+interface MutableFolder {
+  folders: Map<string, MutableFolder>;
+  notes: TreeEntry[];
+}
+
+const root: MutableFolder = { folders: new Map(), notes: [] };
+
+for (const note of notes as NoteSummary[]) {
+  const parts = note.slug.split("/").filter(Boolean);
+  const noteName = parts.pop() ?? note.title;
+  let folder = root;
+  for (const part of parts) {
+    if (!folder.folders.has(part)) {
+      folder.folders.set(part, { folders: new Map(), notes: [] });
+    }
+    folder = folder.folders.get(part)!;
+  }
+  folder.notes.push({ name: noteName, title: note.title, url: note.url, type: "note" });
+}
+
+function folderEntries(folder: MutableFolder): TreeEntry[] {
+  const folders: TreeEntry[] = [...folder.folders.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, "zh-CN"))
+    .map(([name, child]) => ({ name, type: "folder", children: folderEntries(child) }));
+  const noteEntries = folder.notes.sort((left, right) =>
+    (left.title ?? left.name).localeCompare(right.title ?? right.name, "zh-CN", { numeric: true }),
+  );
+  return [...folders, ...noteEntries];
+}
+
+const tree = folderEntries(root);
+---
+
+{/* 左侧常驻窄条（侧边栏）：收起/展开目录栏、搜索、返回上一页、回到首页、问题，任何时候都在 */}
+<div id="nav-rail" class="nav-rail">
+  <button
+    id="sidebar-toggle"
+    class="rail-button rail-toggle"
+    type="button"
+    aria-label="收起目录栏"
+    aria-controls="note-sidebar"
+    aria-expanded="true"
+    data-tip="收起目录栏"
+  >
+    <span></span><span></span><span></span>
+  </button>
+  <button id="nav-back" class="rail-button" type="button" aria-label="返回上一个页面" data-tip="返回上次浏览的页面">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M12.5 4.5 7 10l5.5 5.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"></path>
+    </svg>
+  </button>
+  <a class="rail-button" href="/" aria-label="回到首页" data-tip="返回首页">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path
+        d="M3.5 9.5 10 3.5l6.5 6M5 8.6V16h3.4v-4h3.2v4H15V8.6"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"></path>
+    </svg>
+  </a>
+  {/* 搜索小狗的悬停提示挂在槽位上：按钮本身 overflow:hidden 会把 ::after 小字裁掉 */}
+  <span class="rail-slot" data-tip="搜索全部笔记（Ctrl+Q 或 /）">
+    <button
+      id="search-toggle"
+      class="rail-button rail-dog"
+      type="button"
+      aria-label="搜索笔记"
+      aria-controls="search-panel"
+      aria-expanded="false"
+    >
+      <img src="/media/search-dog.png" alt="" width="30" height="30" />
+    </button>
+  </span>
+  <a class="rail-button rail-q" href="/notes/FAQ/1.1%20常见问题" aria-label="常见问题" data-tip="FAQ">
+    <span aria-hidden="true">?</span>
+  </a>
+</div>
+
+<aside id="note-sidebar" class="note-sidebar" aria-label="笔记目录">
+  {/* 「小何的站点」标题的位置：点搜索后这里变成搜索框 + 结果 */}
+  <div id="search-panel" class="ns-panel" role="search" aria-label="搜索笔记" hidden>
+    <div class="ns-box">
+      <input
+        id="note-search-input"
+        class="ns-input"
+        type="text"
+        placeholder="想找点什么？"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="搜索全部笔记"
+      />
+      <button id="search-clear" class="ns-clear" type="button" title="清空搜索" aria-label="清空搜索" hidden>
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M5.5 5.5l9 9m0-9l-9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+      </button>
+    </div>
+    <div id="search-results" class="ns-results" aria-label="搜索结果"></div>
+  </div>
+  <div id="sidebar-main">
+    <div id="sidebar-nav">
+    {
+      toc ? (
+        <>
+          <div class="toc-label-row">
+            <button
+              id="toc-switch"
+              class="toc-switch"
+              type="button"
+              aria-label="切换为所有目录"
+              data-tip="切换为所有目录"
+            >
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path
+                  d="M4 7h11m0 0-3-3m3 3-3 3M16 13H5m0 0 3-3m-3 3 3 3"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"></path>
+              </svg>
+            </button>
+            <p class="toc-label" id="toc-label">本篇目录</p>
+          </div>
+          {toc.length > 0 ? (
+            <div id="note-toc" class="note-toc">
+              <div class="toc-note-title" title={tocTitle}>
+                {tocTitle}
+              </div>
+              <nav aria-label="本文小节目录">
+                <TableOfContents tree={toc} />
+              </nav>
+            </div>
+          ) : (
+            <p class="toc-empty" id="toc-empty">这篇笔记还没有小标题</p>
+          )}
+          <nav id="note-tree" hidden aria-label="所有笔记目录">
+            <NavigationTree entries={tree} />
+          </nav>
+        </>
+      ) : (
+        <nav id="note-tree">
+          <NavigationTree entries={tree} />
+        </nav>
+      )
+    }
+  </div>
+  </div>
+</aside>
+
+<script>
+  const toggle = document.querySelector<HTMLButtonElement>("#sidebar-toggle");
+  const backButton = document.querySelector<HTMLButtonElement>("#nav-back");
+  const noteLinks = document.querySelectorAll<HTMLAnchorElement>("[data-note-url]");
+
+  function sidebarIsOpen() {
+    return document.documentElement.dataset.sidebar !== "closed";
+  }
+
+  function syncToggle() {
+    if (!toggle) return;
+    const open = sidebarIsOpen();
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "收起笔记目录" : "展开笔记目录");
+    toggle.dataset.tip = open ? "收起目录栏" : "展开目录栏";
+  }
+
+  // 返回站内上一页（首页图谱、上一篇笔记等），滚动位置由浏览器自动恢复；
+  // 直接打开或从外部站点进来时没有站内历史，回网站首页而不是浏览器上一页
+  backButton?.addEventListener("click", () => {
+    const referrer = document.referrer;
+    if (referrer && new URL(referrer, location.href).origin === location.origin) {
+      history.back();
+    } else {
+      location.assign("/");
+    }
+  });
+
+  const setSidebarOpen = (open: boolean) => {
+    document.documentElement.dataset.sidebar = open ? "open" : "closed";
+    localStorage.setItem("sidebar-open", String(open));
+    syncToggle();
+    window.dispatchEvent(new CustomEvent("layoutchange"));
+  };
+
+  toggle?.addEventListener("click", () => setSidebarOpen(!sidebarIsOpen()));
+
+  // 点侧栏以外的内容区域直接收起（竖条上的按钮除外）；
+  // 手机上侧栏是浮层必须这样，桌面上侧栏也默认收起、按需展开，行为保持一致
+  document.addEventListener("click", (event) => {
+    if (!sidebarIsOpen()) return;
+    const target = event.target as HTMLElement | null;
+    if (
+      target &&
+      !target.closest("#note-sidebar") &&
+      !target.closest("#nav-rail") &&
+      !target.closest("#sidebar-toggle")
+    ) {
+      setSidebarOpen(false);
+    }
+  });
+
+  for (const link of noteLinks) {
+    const linkPath = new URL(link.href).pathname;
+    if (decodeURI(linkPath) === decodeURI(window.location.pathname)) {
+      link.setAttribute("aria-current", "page");
+    }
+  }
+
+  syncToggle();
+
+  // ---------- 笔记页：「本篇目录 / 所有目录」切换 ----------
+  // 默认显示本篇目录；首页没有这个开关，展示的就是所有目录
+  const tocSwitch = document.querySelector<HTMLButtonElement>("#toc-switch");
+  const tocLabel = document.querySelector<HTMLElement>("#toc-label");
+  const noteToc = document.querySelector<HTMLElement>("#note-toc");
+  const tocEmpty = document.querySelector<HTMLElement>("#toc-empty");
+  const allTree = document.querySelector<HTMLElement>("#note-tree");
+
+  if (tocSwitch && tocLabel && allTree) {
+    let showingNoteToc = true;
+
+    const applyTocView = () => {
+      const showNote = showingNoteToc;
+      if (noteToc) noteToc.hidden = !showNote;
+      if (tocEmpty) tocEmpty.hidden = !showNote;
+      allTree.hidden = showNote;
+      tocLabel.textContent = showNote ? "本篇目录" : "所有目录";
+      tocSwitch.setAttribute("aria-label", showNote ? "切换为所有目录" : "切换为本篇目录");
+      tocSwitch.dataset.tip = showNote ? "切换为所有目录" : "切换为本篇目录";
+    };
+
+    tocSwitch.addEventListener("click", () => {
+      showingNoteToc = !showingNoteToc;
+      applyTocView();
+    });
+  }
+
+  // ---------- 侧栏全文搜索 ----------
+  // 标题右侧的小狗按钮负责开/关搜索面板；严格匹配关键字，
+  // 搜索记录存在 localStorage（键 note-search-history），可单条删除。
+    const searchToggle = document.querySelector<HTMLButtonElement>("#search-toggle");
+    const input = document.querySelector<HTMLInputElement>("#note-search-input");
+    const clearButton = document.querySelector<HTMLButtonElement>("#search-clear");
+    const panel = document.querySelector<HTMLDivElement>("#search-panel");
+    const results = document.querySelector<HTMLDivElement>("#search-results");
+    // 首页放目录树，笔记页放本文标题目录，开搜索面板时整体隐藏
+    const sidebarNav = document.querySelector<HTMLElement>("#sidebar-nav");
+    const sidebarMain = document.querySelector<HTMLElement>("#sidebar-main");
+
+    if (searchToggle && input && clearButton && panel && results && sidebarNav && sidebarMain) {
+    interface SearchDoc {
+      slug: string;
+      url: string;
+      title: string;
+      text: string;
+    }
+
+    interface SearchWindow {
+      start: number;
+      end: number;
+    }
+
+    interface DocHit {
+      doc: SearchDoc;
+      count: number;
+      textWindows: SearchWindow[];
+    }
+
+    const HISTORY_KEY = "note-search-history";
+    const HISTORY_LIMIT = 12;
+    const EXCERPT_PREVIEW = 4;
+    const CONTEXT_BEFORE = 36;
+    const CONTEXT_AFTER = 64;
+    const MERGE_GAP = 24;
+    const CLOSE_ICON =
+      '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9m0-9l-9 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+    let indexPromise: Promise<SearchDoc[]> | null = null;
+    let renderToken = 0;
+    let debounceTimer: number | undefined;
+
+    // 搜索部分的函数全部用箭头函数常量：外层 if 里的空值收窄
+    // 只对箭头函数生效，function 声明会被 TS 视为可能提前调用。
+
+    const loadIndex = (): Promise<SearchDoc[]> => {
+      indexPromise ??= fetch("/generated/search-index.json").then((response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json() as Promise<SearchDoc[]>;
+      });
+      return indexPromise;
+    };
+
+    const readHistory = (): string[] => {
+      try {
+        const parsed: unknown = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(
+          (item): item is string => typeof item === "string" && item.trim().length > 0,
+        );
+      } catch {
+        return [];
+      }
+    };
+
+    const writeHistory = (list: string[]) => {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_LIMIT)));
+    };
+
+    const rememberQuery = (query: string) => {
+      writeHistory([query, ...readHistory().filter((item) => item !== query)]);
+    };
+
+    const removeHistoryItem = (query: string) => {
+      writeHistory(readHistory().filter((item) => item !== query));
+    };
+
+    const currentTerms = (): string[] =>
+      input.value
+        .trim()
+        .split(/\s+/)
+        .filter((term) => term.length > 0);
+
+    // 严格匹配：整个关键字作为子串原样出现才算命中（英文忽略大小写），不做模糊/分词。
+    const findPositions = (text: string, terms: string[]): number[] => {
+      const haystack = text.toLowerCase();
+      const positions: number[] = [];
+      for (const term of terms) {
+        const needle = term.toLowerCase();
+        let from = 0;
+        for (;;) {
+          const found = haystack.indexOf(needle, from);
+          if (found === -1) break;
+          positions.push(found);
+          from = found + needle.length;
+        }
+      }
+      return positions.sort((left, right) => left - right);
+    };
+
+    const buildWindows = (positions: number[]): SearchWindow[] => {
+      const windows: SearchWindow[] = [];
+      for (const position of positions) {
+        const last = windows[windows.length - 1];
+        if (last && position - last.end <= MERGE_GAP) last.end = position + 1;
+        else windows.push({ start: position, end: position + 1 });
+      }
+      return windows;
+    };
+
+    // 取摘录时把范围裁到相邻窗口之外，保证同一处命中只会在一张卡片里被高亮。
+    const excerptOf = (
+      text: string,
+      excerptWindow: SearchWindow,
+      previous: SearchWindow | null,
+      next: SearchWindow | null,
+    ) => {
+      const from = Math.max(0, excerptWindow.start - CONTEXT_BEFORE, previous ? previous.end + 1 : 0);
+      const to = Math.min(text.length, excerptWindow.end + CONTEXT_AFTER, next ? next.start : text.length);
+      return {
+        prefix: from > 0 ? "…" : "",
+        body: text.slice(from, to).replace(/\s+/g, " ").trim(),
+        suffix: to < text.length ? "…" : "",
+      };
+    };
+
+    const appendHighlighted = (parent: HTMLElement, text: string, terms: string[]) => {
+      const haystack = text.toLowerCase();
+      const needles = terms.map((term) => term.toLowerCase()).filter((needle) => needle.length > 0);
+      let cursor = 0;
+      for (;;) {
+        let next = -1;
+        let length = 0;
+        for (const needle of needles) {
+          const found = haystack.indexOf(needle, cursor);
+          if (found !== -1 && (next === -1 || found < next)) {
+            next = found;
+            length = needle.length;
+          }
+        }
+        if (next === -1) break;
+        if (next > cursor) parent.appendChild(document.createTextNode(text.slice(cursor, next)));
+        const mark = document.createElement("mark");
+        mark.textContent = text.slice(next, next + length);
+        parent.appendChild(mark);
+        cursor = next + length;
+      }
+      if (cursor < text.length) parent.appendChild(document.createTextNode(text.slice(cursor)));
+    };
+
+    const searchDocs = (docs: SearchDoc[], terms: string[]) => {
+      const hits: DocHit[] = [];
+      let total = 0;
+      for (const doc of docs) {
+        const titlePositions = findPositions(doc.title, terms);
+        const textPositions = findPositions(doc.text, terms);
+        if (!titlePositions.length && !textPositions.length) continue;
+        // 计数用真实命中次数，摘录才按窗口合并展示。
+        const count = titlePositions.length + textPositions.length;
+        total += count;
+        hits.push({ doc, count, textWindows: buildWindows(textPositions) });
+      }
+      hits.sort(
+        (left, right) =>
+          right.count - left.count || left.doc.title.localeCompare(right.doc.title, "zh-CN"),
+      );
+      return { hits, total };
+    };
+
+    const createGroupElement = (hit: DocHit, terms: string[], expanded: boolean) => {
+      const group = document.createElement("div");
+      group.className = "ns-group";
+
+      const header = document.createElement("a");
+      header.className = "ns-header";
+      header.href = hit.doc.url;
+      const name = document.createElement("span");
+      name.className = "ns-name";
+      appendHighlighted(name, hit.doc.title, terms);
+      const badge = document.createElement("span");
+      badge.className = "ns-count";
+      badge.textContent = String(hit.count);
+      header.append(name, badge);
+      group.appendChild(header);
+
+      const list = document.createElement("div");
+      list.className = "ns-list";
+      group.appendChild(list);
+
+      const excerpts = hit.textWindows.map((excerptWindow, index) =>
+        excerptOf(
+          hit.doc.text,
+          excerptWindow,
+          hit.textWindows[index - 1] ?? null,
+          hit.textWindows[index + 1] ?? null,
+        ),
+      );
+      const visible = expanded ? excerpts : excerpts.slice(0, EXCERPT_PREVIEW);
+      for (const excerpt of visible) {
+        const link = document.createElement("a");
+        link.className = "ns-item";
+        link.href = hit.doc.url;
+        if (excerpt.prefix) link.appendChild(document.createTextNode(excerpt.prefix));
+        appendHighlighted(link, excerpt.body, terms);
+        if (excerpt.suffix) link.appendChild(document.createTextNode(excerpt.suffix));
+        list.appendChild(link);
+      }
+
+      const hiddenCount = excerpts.length - visible.length;
+      if (hiddenCount > 0) {
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "ns-more";
+        more.textContent = `展开其余 ${hiddenCount} 段`;
+        more.addEventListener("click", () =>
+          group.replaceWith(createGroupElement(hit, terms, true)),
+        );
+        list.appendChild(more);
+      }
+      return group;
+    };
+
+    const statusElement = (text: string) => {
+      const element = document.createElement("div");
+      element.className = "ns-status";
+      element.textContent = text;
+      return element;
+    };
+
+    // 搜索视图与普通目录视图互斥；侧栏收着的时候搜索，会先展开侧栏，
+    // 关闭搜索时再还原（sidebarOpenedForSearch 记录是不是搜索展开的）
+    let sidebarOpenedForSearch = false;
+
+    const showTree = () => {
+      sidebarMain.hidden = false;
+      panel.hidden = true;
+      searchToggle.setAttribute("aria-expanded", "false");
+      if (sidebarOpenedForSearch) {
+        sidebarOpenedForSearch = false;
+        setSidebarOpen(false);
+      }
+    };
+
+    const showPanel = () => {
+      sidebarMain.hidden = true;
+      panel.hidden = false;
+      searchToggle.setAttribute("aria-expanded", "true");
+      if (document.documentElement.dataset.sidebar !== "open") {
+        sidebarOpenedForSearch = true;
+        setSidebarOpen(true);
+      }
+    };
+
+    const renderResultsPanel = async () => {
+      const terms = currentTerms();
+      const token = ++renderToken;
+      results.replaceChildren(statusElement("小狗翻找中…"));
+      let docs: SearchDoc[];
+      try {
+        docs = await loadIndex();
+      } catch {
+        if (token === renderToken) {
+          results.replaceChildren(statusElement("搜索索引加载失败，请刷新页面重试。"));
+        }
+        return;
+      }
+      if (token !== renderToken) return;
+
+      const { hits, total } = searchDocs(docs, terms);
+      if (token !== renderToken) return;
+
+      if (!hits.length) {
+        results.replaceChildren(statusElement("哎呀！没找到"));
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      const summary = document.createElement("div");
+      summary.className = "ns-summary";
+      summary.textContent = `${total} 个匹配 · ${hits.length} 篇笔记`;
+      fragment.appendChild(summary);
+      for (const hit of hits) fragment.appendChild(createGroupElement(hit, terms, false));
+      results.replaceChildren(fragment);
+    };
+
+    const renderHistoryPanel = () => {
+      const history = readHistory();
+      if (history.length === 0) {
+        results.replaceChildren(statusElement("输入关键字，找找笔记吧～"));
+        return;
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "ns-history";
+      const title = document.createElement("div");
+      title.className = "ns-history-title";
+      title.textContent = "最近在找";
+      wrap.appendChild(title);
+
+      for (const term of history) {
+        const row = document.createElement("div");
+        row.className = "ns-row";
+        const termButton = document.createElement("button");
+        termButton.type = "button";
+        termButton.className = "ns-term";
+        termButton.textContent = term;
+        termButton.addEventListener("click", () => {
+          input.value = term;
+          syncClearButton();
+          void renderResultsPanel();
+        });
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "ns-delete";
+        deleteButton.setAttribute("aria-label", `删除搜索记录：${term}`);
+        deleteButton.innerHTML = CLOSE_ICON;
+        deleteButton.addEventListener("click", () => {
+          removeHistoryItem(term);
+          renderHistoryPanel();
+        });
+        row.append(termButton, deleteButton);
+        wrap.appendChild(row);
+      }
+      results.replaceChildren(wrap);
+    };
+
+    const renderPanel = () => {
+      if (currentTerms().length > 0) {
+        void renderResultsPanel();
+      } else {
+        renderHistoryPanel();
+      }
+    };
+
+    const syncClearButton = () => {
+      clearButton.hidden = input.value.trim().length === 0;
+    };
+
+    searchToggle.addEventListener("click", () => {
+      if (panel.hidden) {
+        showPanel();
+        renderPanel();
+        input.focus();
+      } else {
+        showTree();
+      }
+    });
+
+    input.addEventListener("input", () => {
+      syncClearButton();
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(renderPanel, 120);
+    });
+
+    input.addEventListener("focus", () => {
+      void loadIndex().catch(() => {});
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        if (input.value) {
+          input.value = "";
+          syncClearButton();
+          renderPanel();
+        } else {
+          showTree();
+        }
+        return;
+      }
+      if (event.key === "Enter") {
+        const terms = currentTerms();
+        if (terms.length > 0) rememberQuery(terms.join(" "));
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      input.value = "";
+      syncClearButton();
+      renderPanel();
+      input.focus();
+    });
+
+    // 面板内的点击不让输入框失焦，避免移动端键盘先收起、点不到记录。
+    results.addEventListener("pointerdown", (event) => event.preventDefault());
+    results.addEventListener("click", (event) => {
+      if (!(event.target instanceof HTMLElement)) return;
+      if (event.target.closest("a")) {
+        const terms = currentTerms();
+        if (terms.length > 0) rememberQuery(terms.join(" "));
+      }
+    });
+
+    window.addEventListener("keydown", (event) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        !!target &&
+        (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable);
+      // Esc 关闭目录栏（输入框里按 Esc 由各自的处理器负责：先清空/关搜索）
+      if (event.key === "Escape" && !typing && sidebarIsOpen()) {
+        event.preventDefault();
+        setSidebarOpen(false);
+        return;
+      }
+      // Ctrl+Q（或 /）呼出搜索；侧栏收着时会先自动展开
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "q") {
+        event.preventDefault();
+        showPanel();
+        input.focus();
+        input.select();
+        return;
+      }
+      if (!typing && event.key === "/") {
+        event.preventDefault();
+        showPanel();
+        input.focus();
+      }
+    });
+
+    syncClearButton();
+  }
+</script>
+
+<style>
+  /* 左侧常驻窄条：收起/展开、搜索、返回上一页、问题与留言 */
+  .nav-rail {
+    position: fixed;
+    z-index: 40;
+    inset: 0 auto 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: var(--rail-width);
+    padding: 10px 0 calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface-primary);
+    border-right: 1px solid var(--border-color);
+    /* iOS Safari 需要 -webkit- 前缀才有毛玻璃 */
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+
+  /* 五个按钮的悬停/点击状态完全一致：悬停加深描边和底色，按下轻微缩小 */
+  .rail-button {
+    display: grid;
+    place-content: center;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    cursor: pointer;
+    text-decoration: none;
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease,
+      transform 120ms ease;
+  }
+
+  .rail-button:hover {
+    border-color: var(--border-strong);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  .rail-button:active {
+    transform: scale(0.92);
+  }
+
+  .rail-button svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .rail-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* 收起/展开：三条横线，静置时保留玻璃质感，悬停/按下与其他按钮一致 */
+  .rail-toggle {
+    padding: 6px;
+    background: color-mix(in srgb, var(--surface-primary) 88%, transparent);
+    box-shadow: 0 6px 22px var(--shadow-color);
+    place-content: center;
+    gap: 4px;
+  }
+
+  .rail-toggle span {
+    display: block;
+    width: 14px;
+    height: 1.5px;
+    background: var(--text-normal);
+  }
+
+  .rail-toggle:hover {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  .rail-q span {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .note-sidebar {
+    position: fixed;
+    z-index: 30;
+    inset: 0 auto 0 var(--rail-width);
+    width: var(--sidebar-width);
+    /* 底部留出 iPhone 等设备的 Home 指示条安全区 */
+    padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    overflow: auto;
+    color: var(--text-normal);
+    background: var(--surface-primary);
+    border-right: 1px solid var(--border-color);
+    box-shadow: 8px 0 36px var(--shadow-color);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    transition: transform 180ms ease;
+  }
+
+  /* 笔记页侧栏：本文标题目录 */
+  .note-toc {
+    font-size: 13px;
+  }
+
+  /* 笔记页侧栏：本篇目录 / 所有目录 的标签行与切换按钮 */
+  .toc-label-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 4px 4px;
+  }
+
+  .toc-label-row .toc-label {
+    margin: 0;
+  }
+
+  .toc-switch {
+    display: grid;
+    place-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+    transition: color 160ms ease, background-color 160ms ease;
+  }
+
+  .toc-switch:hover {
+    color: var(--accent-strong);
+    background: var(--surface-hover);
+  }
+
+  .toc-switch svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .toc-label {
+    margin: 0 4px 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .toc-note-title {
+    display: -webkit-box;
+    margin: 0 2px 14px;
+    padding-bottom: 10px;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border-color);
+    -webkit-box-orient: vertical;
+    color: var(--text-normal);
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-line-clamp: 2;
+  }
+
+  .toc-empty {
+    margin: 4px 4px;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  :global(html[data-sidebar="closed"]) .note-sidebar {
+    transform: translateX(-100%);
+  }
+
+  @media (max-width: 760px) {
+    .note-sidebar {
+      box-shadow: 6px 0 20px rgb(0 0 0 / 12%);
+    }
+  }
+</style>
+
+<!-- 搜索面板的内容是运行时用 JS 生成的，作用域样式加不上 data 属性，
+     所以这一块用全局样式，类名统一 ns- 前缀避免冲突。 -->
+<style is:global>
+  .note-sidebar [hidden] {
+    display: none !important;
+  }
+
+  .nav-rail .rail-dog {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 9px;
+    background: var(--surface-secondary);
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .nav-rail .rail-dog img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .nav-rail .rail-dog:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+  }
+
+  .nav-rail .rail-dog[aria-expanded="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  }
+
+  .note-sidebar .ns-panel {
+    margin: 12px 0 18px;
+    font-size: 13px;
+    animation: ns-panel-in 180ms ease;
+    transform-origin: top;
+  }
+
+  @keyframes ns-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(-5px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .note-sidebar .ns-box {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 38px;
+    padding: 0 6px 0 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--surface-secondary);
+    transition: border-color 160ms ease, background-color 160ms ease;
+  }
+
+  .note-sidebar .ns-box:focus-within {
+    border-color: var(--accent);
+    background: var(--surface-primary);
+  }
+
+  .note-sidebar .ns-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 2px;
+    border: 0;
+    outline: none;
+    color: var(--text-normal);
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .note-sidebar .ns-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .note-sidebar .ns-clear {
+    display: grid;
+    place-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .note-sidebar .ns-clear:hover {
+    color: var(--text-normal);
+    background: var(--surface-hover);
+  }
+
+  .note-sidebar .ns-clear svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .note-sidebar .ns-results {
+    margin-top: 12px;
+  }
+
+  .note-sidebar .ns-status {
+    padding: 12px 2px;
+    color: var(--text-muted);
+  }
+
+  .note-sidebar .ns-summary {
+    margin: 0 2px 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .note-sidebar .ns-group {
+    margin-bottom: 16px;
+  }
+
+  .note-sidebar .ns-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 2px;
+    color: var(--text-normal);
+    font-weight: 700;
+    font-size: 13.5px;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+
+  .note-sidebar .ns-header:hover .ns-name {
+    color: var(--accent-strong);
+  }
+
+  .note-sidebar .ns-count {
+    flex: none;
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 12px;
+  }
+
+  .note-sidebar .ns-list {
+    display: grid;
+    gap: 6px;
+  }
+
+  .note-sidebar .ns-item {
+    display: block;
+    padding: 8px 10px;
+    color: var(--text-normal);
+    background: var(--surface-secondary);
+    border-radius: 8px;
+    line-height: 1.6;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+    transition: background-color 160ms ease;
+  }
+
+  .note-sidebar .ns-item:hover {
+    background: var(--surface-hover);
+  }
+
+  .note-sidebar .ns-more {
+    padding: 4px 2px;
+    border: 0;
+    background: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .note-sidebar .ns-more:hover {
+    color: var(--accent-strong);
+  }
+
+  .note-sidebar .ns-results mark {
+    padding: 0 1px;
+    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 26%, transparent);
+    border-radius: 3px;
+  }
+
+  .note-sidebar .ns-history-title {
+    margin: 0 2px 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .note-sidebar .ns-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .note-sidebar .ns-term {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 0;
+    border-radius: 8px;
+    color: var(--text-normal);
+    background: none;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+  }
+
+  .note-sidebar .ns-term:hover {
+    background: var(--surface-hover);
+  }
+
+  .note-sidebar .ns-delete {
+    display: grid;
+    place-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .note-sidebar .ns-delete:hover {
+    color: var(--text-normal);
+    background: var(--surface-hover);
+  }
+
+  .note-sidebar .ns-delete svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  /* iOS Safari 聚焦字号小于 16px 的输入框会自动放大页面，手机上提到 16px */
+  @media (max-width: 760px) {
+    .note-sidebar .ns-input {
+      font-size: 16px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .note-sidebar .ns-panel {
+      animation: none;
+    }
+  }
+</style>

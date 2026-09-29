@@ -1,0 +1,193 @@
+---
+import type { TocHeading } from "../lib/toc";
+
+interface Props {
+  tree: TocHeading[];
+}
+
+const { tree } = Astro.props;
+---
+
+<ul class="toc-list">
+  {
+    tree.map((node) => (
+      <li>
+        {node.children.length > 0 ? (
+          <details class="toc-fold" open>
+            <summary class="toc-row">
+              <span class="toc-caret" aria-hidden="true" />
+              <a class="toc-link" href={`#${node.id}`} title={node.text}>
+                {node.text}
+              </a>
+            </summary>
+            <Astro.self tree={node.children} />
+          </details>
+        ) : (
+          <a class="toc-link" href={`#${node.id}`} title={node.text}>
+            {node.text}
+          </a>
+        )}
+      </li>
+    ))
+  }
+</ul>
+
+<script>
+  // 目录滚动高亮：把视口上缘以上（留一点余量）最靠下的标题当作当前小节。
+  // 滚动事件里直接计算即可——条目只有十几个，不值得引入 rAF/IntersectionObserver
+  // 的调度依赖（部分内嵌浏览器空闲时不产生帧，rAF 会一直不执行）。
+  const toc = document.querySelector<HTMLElement>("#note-toc");
+
+  if (toc) {
+    const links = [...toc.querySelectorAll<HTMLAnchorElement>("a.toc-link")];
+    const linkById = new Map(
+      links.map((link) => [decodeURIComponent(link.hash.slice(1)), link]),
+    );
+    const headings = [...linkById.keys()]
+      .map((id) => document.getElementById(id))
+      .filter((heading): heading is HTMLElement => heading !== null)
+      .sort((left, right) =>
+        left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+      );
+
+    let activeLink: HTMLAnchorElement | null = null;
+
+    const setActive = (link: HTMLAnchorElement | null) => {
+      if (link === activeLink) return;
+      activeLink?.classList.remove("is-active");
+      activeLink?.removeAttribute("aria-current");
+      activeLink = link;
+      if (link) {
+        // 目标小节被折叠着就先展开，保证高亮条目看得见
+        const fold = link.closest("details");
+        if (fold && !fold.open) fold.open = true;
+        link.classList.add("is-active");
+        link.setAttribute("aria-current", "location");
+      }
+    };
+
+    const update = () => {
+      let current = headings[0] ?? null;
+      for (const heading of headings) {
+        if (heading.getBoundingClientRect().top <= 96) current = heading;
+      }
+      setActive(current ? (linkById.get(current.id) ?? null) : null);
+    };
+
+    // 有下级的小节可折叠：点标题文字只跳转（拦下 summary 的默认折叠），
+    // 点箭头或行内其余空白才收起/展开
+    // 注：TypeScript 6 的 lib.dom 精简掉了 HTMLSummaryElement，用 HTMLElement 即可
+    for (const row of toc.querySelectorAll<HTMLElement>("summary.toc-row")) {
+      row.addEventListener("click", (event) => {
+        if (!(event.target instanceof HTMLElement)) return;
+        const link = event.target.closest("a");
+        if (!link) return;
+        event.preventDefault();
+        const id = decodeURIComponent(link.hash.slice(1));
+        document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+        history.pushState(null, "", link.hash);
+        setActive(linkById.get(id) ?? null);
+      });
+    }
+
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    // 点击目录、前进后退都会走 hashchange，滚动事件之外这里兜底校正高亮
+    window.addEventListener("hashchange", () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      setActive(linkById.get(id) ?? null);
+    });
+    // 侧栏开合有 180ms 动画，等布局稳定后再校正一次高亮
+    window.addEventListener("layoutchange", () => window.setTimeout(update, 220));
+    for (const link of links) {
+      link.addEventListener("click", () => setActive(link));
+    }
+
+    update();
+  }
+</script>
+
+<style>
+  .toc-list {
+    margin: 0;
+    padding-left: 12px;
+    list-style: none;
+  }
+
+  .toc-list .toc-list {
+    margin-top: 2px;
+  }
+
+  .toc-list li + li {
+    margin-top: 2px;
+  }
+
+  .toc-link {
+    display: block;
+    padding: 4px 7px;
+    overflow: hidden;
+    color: var(--text-muted);
+    text-decoration: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 6px;
+    line-height: 1.5;
+  }
+
+  .toc-link:hover {
+    color: var(--text-normal);
+    background: var(--surface-hover);
+  }
+
+  .toc-link.is-active {
+    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    font-weight: 600;
+  }
+
+  /* 可折叠小节：整行是 summary，箭头在左侧（与首页分类折叠一致），
+     标题文字负责跳转，箭头和行内空白负责折叠 */
+  .toc-fold > summary.toc-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .toc-fold > summary.toc-row::-webkit-details-marker {
+    display: none;
+  }
+
+  .toc-row .toc-link {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .toc-caret {
+    flex: none;
+    width: 0;
+    height: 0;
+    margin: 0 2px 0 6px;
+    border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+    border-left: 4.5px solid var(--text-muted);
+    transition: transform 140ms ease;
+  }
+
+  .toc-row:hover .toc-caret {
+    border-left-color: var(--text-normal);
+  }
+
+  .toc-fold[open] > .toc-row .toc-caret {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toc-caret {
+      transition: none;
+    }
+  }
+</style>

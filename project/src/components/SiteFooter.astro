@@ -1,0 +1,87 @@
+---
+// 页脚版权：想改文字就改下面几个变量，想改样式就改 <style> 里的规则
+const copyrightText = "© 2026 海语长风 · Kristin Blue. All rights reserved.";
+const usageNotice = "Personal blog. Not for commercial use.";
+const contactEmail = "haiyuchangfeng@gmail.com";
+const icpNumber = "赣ICP备2026022532号-1";
+// 工信部要求备案号链接到 Beian 网站
+const icpUrl = "https://beian.miit.gov.cn/";
+// 公安备案还在审核，拿到备案号后把 policeUrl 换成查询链接、文字换成号码即可
+const policeText = "新站暂无，审核中";
+---
+
+<footer class="site-footer">
+  <p class="footer-text">{copyrightText}</p>
+  <p class="footer-text">{usageNotice}</p>
+  <p class="footer-text">
+    Contact me: <a class="footer-link" href={`mailto:${contactEmail}`}>{contactEmail}</a>
+  </p>
+  <p class="footer-beian">
+    <a class="footer-link" href={icpUrl} target="_blank" rel="noopener">{icpNumber}</a>
+    <span class="beian-police">
+      <img class="beian-icon" src="/media/beian.png" alt="公安联网备案" width="14" height="14" loading="lazy" />
+      <span>{policeText}</span>
+    </span>
+  </p>
+</footer>
+
+<style>
+  /* 背景用主题色调浅后的纯色；浅色主题下只比页面底色深一点点（8% 主色调） */
+  .site-footer {
+    --footer-bg: color-mix(in srgb, var(--accent) 8%, var(--background-primary));
+    background: var(--footer-bg);
+    margin-top: auto;
+    padding: 22px 24px 20px;
+    text-align: center;
+  }
+
+  /* 黑色主题：往页面底色里调，比原来的浅灰带更深一点 */
+  :global(:root[data-theme="black"]) .site-footer {
+    --footer-bg: color-mix(in srgb, var(--accent) 26%, var(--background-primary));
+  }
+
+  /* 页脚用系统默认字体，不跟正文的 LXGW 文楷 */
+  .footer-text {
+    margin: 3px 0;
+    font-size: 12.5px;
+    letter-spacing: 0.03em;
+    font-family: system-ui, "Microsoft YaHei", sans-serif;
+    color: var(--accent-strong);
+  }
+
+  .footer-link {
+    color: var(--accent-strong);
+    text-decoration: none;
+  }
+
+  .footer-link:hover {
+    text-decoration: underline;
+  }
+
+  /* 备案一行：ICP 号 + 公安图标并排，与上面的版权之间用细线隔开 */
+  .footer-beian {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px 16px;
+    margin: 10px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+    font-family: system-ui, "Microsoft YaHei", sans-serif;
+    color: var(--accent-strong);
+  }
+
+  .beian-police {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .beian-icon {
+    display: block;
+    width: 14px;
+    height: 14px;
+  }
+</style>

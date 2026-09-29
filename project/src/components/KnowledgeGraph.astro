@@ -1,0 +1,892 @@
+<main class="graph-page">
+  <canvas id="knowledge-graph" aria-label="首页笔记关系图，可用鼠标滚轮缩放"></canvas>
+  <button
+    id="home-gif-button"
+    class="home-core"
+    type="button"
+    aria-label="切换首页动画并让笔记节点散开碰撞"
+  >
+    <span class="gif-halo" aria-hidden="true"></span>
+  <img id="home-gif" src="/media/home/03-hop.gif" alt="小狗蹦跳动画" width="320" height="320" />
+  </button>
+  <p id="empty-message" hidden>
+    暂无笔记。请将 Markdown 笔记放入 src/content/notes 后重新构建。
+  </p>
+</main>
+
+<script>
+  import {
+    forceCenter,
+    forceCollide,
+    forceLink,
+    forceManyBody,
+    forceSimulation,
+    forceX,
+    forceY,
+  } from "d3-force";
+
+  interface GraphNode {
+    id: string;
+    title: string;
+    url: string;
+    x?: number;
+    y?: number;
+    vx?: number;
+    vy?: number;
+    fx?: number | null;
+    fy?: number | null;
+    radius?: number;
+    degree?: number;
+  }
+
+  interface LabelRect {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+  }
+
+  interface LabelLayout {
+    node: GraphNode;
+    x: number;
+    y: number;
+    preferredX: number;
+    preferredY: number;
+    width: number;
+    height: number;
+    priority: number;
+  }
+
+  interface GraphLink {
+    source: string | GraphNode;
+    target: string | GraphNode;
+  }
+
+  interface GraphData {
+    nodes: GraphNode[];
+    links: GraphLink[];
+  }
+
+  // 首页动画按访客本地时间切换；白天按列表顺序循环播放；14、15 是单次播放，时长来自素材清单。
+  const HOME_GIF_SETTINGS = {
+    daytimeStartsAt: 7,
+    nighttimeStartsAt: 22,
+    daytime: [
+      { src: "/media/home/03-hop.gif", alt: "小狗蹦跳动画" },
+      { src: "/media/home/08-hearts-hop.gif", alt: "小狗与爱心动画" },
+      { src: "/media/home/10-sparkle-hop.gif", alt: "小狗闪闪发光动画" },
+      { src: "/media/home/09-curious-hop.gif", alt: "小狗好奇张望动画" },
+    ],
+    lateNight: { src: "/media/home/07-doze-hop.gif", alt: "小狗打瞌睡动画" },
+    sleeping: {
+      together: { src: "/media/home/12-sleep-together.gif", alt: "小狗一起睡觉动画" },
+      leaving: { src: "/media/home/14-leave-blanket.gif", alt: "小狗走出被窝动画" },
+      outside: { src: "/media/home/13-outside-grumpy.gif", alt: "小狗待在被窝外动画" },
+      entering: { src: "/media/home/15-enter-blanket.gif", alt: "小狗钻回被窝动画" },
+    },
+    transitionDurationMs: 6080,
+    doubleClickWindowMs: 600,
+  } as const;
+
+  const ORBIT_SETTINGS = {
+    minimumLinks: 10,
+    degreesPerSecond: 0.45,
+    startDelayMs: 1800,
+    simulationAlpha: 0.025,
+    returnDurationMs: 900,
+  } as const;
+
+  // 缩放、文字淡出、节点尺寸和点击 GIF 后的碰撞效果都在这里调整。
+  const GRAPH_SETTINGS = {
+    minZoom: 0.45,
+    maxZoom: 1.75,
+    zoomSensitivity: 0.00125,
+    labelFadeStartsAt: 0.8,
+    labelHiddenAt: 0.55,
+    maximumLabelRatio: 2 / 3,
+    nodeBaseRadius: 1,
+    nodeRadiusPerLink: 1.2,
+    nodeRadiusExponent: 0.55,
+    nodeRadiusBonusLimit: 9,
+    homeClearanceDesktop: 118,
+    homeClearanceMobile: 80,
+    homeGap: 18,
+    linkStrength: 0.25,
+    scatterLinkStrength: 0.035,
+    scatterDurationMs: 700,
+    scatterSpeedMin: 6,
+    scatterSpeedMax: 11,
+    scatterAlpha: 0.5,
+  } as const;
+
+  const canvasElement = document.querySelector<HTMLCanvasElement>("#knowledge-graph");
+  const emptyMessageElement = document.querySelector<HTMLParagraphElement>("#empty-message");
+  const gifButtonElement = document.querySelector<HTMLButtonElement>("#home-gif-button");
+  const gifElement = document.querySelector<HTMLImageElement>("#home-gif");
+
+  if (!canvasElement || !emptyMessageElement || !gifButtonElement || !gifElement) {
+    throw new Error("首页关系图容器初始化失败");
+  }
+
+  const canvas = canvasElement;
+  const emptyMessage = emptyMessageElement;
+  const gifButton = gifButtonElement;
+  const homeGif = gifElement;
+  let daytimeGifIndex = -1;
+  let currentTimeMode: "daytime" | "lateNight" | "sleeping" | null = null;
+  let sleepState: "together" | "leaving" | "outside" | "entering" = "together";
+  let lastSleepClickAt: number | null = null;
+  let transitionTimer: number | undefined;
+  let scatterNodes = () => {};
+
+  function timeMode(date = new Date()) {
+    const hour = date.getHours();
+    if (hour >= HOME_GIF_SETTINGS.daytimeStartsAt && hour < HOME_GIF_SETTINGS.nighttimeStartsAt) return "daytime";
+    return hour >= HOME_GIF_SETTINGS.nighttimeStartsAt ? "lateNight" : "sleeping";
+  }
+
+  function showGif(item: { readonly src: string; readonly alt: string }) {
+    if (homeGif.getAttribute("src") !== item.src) homeGif.src = item.src;
+    homeGif.alt = item.alt;
+  }
+
+  function showNextDaytimeGif() {
+    daytimeGifIndex = (daytimeGifIndex + 1) % HOME_GIF_SETTINGS.daytime.length;
+    showGif(HOME_GIF_SETTINGS.daytime[daytimeGifIndex]);
+  }
+
+  function syncGifWithTime(force = false) {
+    const mode = timeMode();
+    if (!force && mode === currentTimeMode) return;
+    if (transitionTimer !== undefined) window.clearTimeout(transitionTimer);
+    transitionTimer = undefined;
+    currentTimeMode = mode;
+    daytimeGifIndex = -1;
+    sleepState = "together";
+    lastSleepClickAt = null;
+    if (mode === "daytime") showNextDaytimeGif();
+    else if (mode === "lateNight") showGif(HOME_GIF_SETTINGS.lateNight);
+    else showGif(HOME_GIF_SETTINGS.sleeping.together);
+  }
+
+  function playSleepTransition(state: "leaving" | "entering") {
+    sleepState = state;
+    lastSleepClickAt = null;
+    showGif(HOME_GIF_SETTINGS.sleeping[state]);
+    transitionTimer = window.setTimeout(() => {
+      if (currentTimeMode !== "sleeping" || sleepState !== state) return;
+      sleepState = state === "leaving" ? "outside" : "together";
+      showGif(HOME_GIF_SETTINGS.sleeping[sleepState]);
+      transitionTimer = undefined;
+    }, HOME_GIF_SETTINGS.transitionDurationMs);
+  }
+
+  gifButton.addEventListener("click", () => {
+    syncGifWithTime();
+    if (currentTimeMode === "daytime") {
+      showNextDaytimeGif();
+    } else if (currentTimeMode === "sleeping") {
+      if (sleepState === "together") {
+        const now = performance.now();
+        if (lastSleepClickAt !== null && now - lastSleepClickAt <= HOME_GIF_SETTINGS.doubleClickWindowMs) {
+          playSleepTransition("leaving");
+        } else {
+          lastSleepClickAt = now;
+        }
+      } else if (sleepState === "outside") {
+        playSleepTransition("entering");
+      }
+    }
+    scatterNodes();
+  });
+
+  syncGifWithTime(true);
+  window.setInterval(() => syncGifWithTime(), 60_000);
+
+  const response = await fetch("/generated/graph.json");
+  const graph = (await response.json()) as GraphData;
+
+  if (graph.nodes.length === 0) {
+    canvas.hidden = true;
+    emptyMessage.hidden = false;
+  } else {
+    const canvasContext = canvas.getContext("2d");
+    if (!canvasContext) throw new Error("浏览器不支持 Canvas 2D");
+    const context = canvasContext;
+
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+    let viewScale = 1;
+    let draggedNode: GraphNode | null = null;
+    let hoveredNode: GraphNode | null = null;
+    let pointerStart = { x: 0, y: 0 };
+    let pointerMoved = false;
+    let colors = readThemeColors();
+    let homeRadius: number = GRAPH_SETTINGS.homeClearanceDesktop;
+    let scatterTimer: number | undefined;
+    const labelOpacities = new Map<string, number>();
+    // 只保存相对节点锚点的偏移，而不是画布绝对坐标。
+    // 这样节点移动时文字会立即跟随，避让位移本身再做平滑过渡。
+    const labelOffsets = new Map<string, { x: number; y: number }>();
+    const labelOffsetTargets = new Map<string, { x: number; y: number }>();
+    let lastLabelLayoutAt = 0;
+    let lastLabelLayoutKey = "";
+    let lastLabelFrameAt = 0;
+
+    const degrees = new Map<string, number>();
+    for (const link of graph.links) {
+      const source = typeof link.source === "string" ? link.source : link.source.id;
+      const target = typeof link.target === "string" ? link.target : link.target.id;
+      degrees.set(source, (degrees.get(source) ?? 0) + 1);
+      degrees.set(target, (degrees.get(target) ?? 0) + 1);
+    }
+    for (const node of graph.nodes) {
+      const degree = degrees.get(node.id) ?? 0;
+      node.degree = degree;
+      node.radius = GRAPH_SETTINGS.nodeBaseRadius + Math.min(
+        GRAPH_SETTINGS.nodeRadiusBonusLimit,
+        Math.pow(degree, GRAPH_SETTINGS.nodeRadiusExponent) * GRAPH_SETTINGS.nodeRadiusPerLink,
+      );
+    }
+    const orbitNodes = graph.nodes.filter((node) => (node.degree ?? 0) >= ORBIT_SETTINGS.minimumLinks);
+    const orbitStates = new Map<string, { angle: number; radius: number }>();
+    const orbitReturns = new Map<string, { x: number; y: number; startedAt: number }>();
+    let orbitEnabled = false;
+    let lastOrbitFrame = 0;
+    // 链接数决定名称优先级；名称候选总数限制为全部笔记的一定比例。
+    const minimumLabelLinks = 3;
+    const nodesByLabelPriority = [...graph.nodes]
+      .sort((left, right) =>
+        (right.degree ?? 0) - (left.degree ?? 0) || left.id.localeCompare(right.id, "zh-CN")
+      );
+    const maximumVisibleLabels = Math.floor(graph.nodes.length * GRAPH_SETTINGS.maximumLabelRatio);
+    const labeledNodes = nodesByLabelPriority
+      .filter((node) => (node.degree ?? 0) >= minimumLabelLinks)
+      .slice(0, maximumVisibleLabels);
+
+    const linkForce = forceLink<GraphNode, GraphLink>(graph.links)
+      .id((node) => node.id)
+      .distance(110)
+      .strength(GRAPH_SETTINGS.linkStrength);
+
+    const simulation = forceSimulation<GraphNode>(graph.nodes)
+      .force(
+        "link",
+        linkForce,
+      )
+      .force("charge", forceManyBody().strength(-140))
+      .force(
+        "collision",
+        forceCollide<GraphNode>()
+          .radius((node) => (node.radius ?? GRAPH_SETTINGS.nodeBaseRadius) + 7)
+          .strength(1)
+          .iterations(3),
+      )
+      .force("home-space", (alpha) => {
+        for (const node of graph.nodes) {
+          if (node.x == null || node.y == null) continue;
+          let dx = node.x - width / 2;
+          let dy = node.y - height / 2;
+          let distance = Math.hypot(dx, dy);
+          const minimumDistance = (homeRadius + GRAPH_SETTINGS.homeGap) / viewScale + (node.radius ?? 0);
+          if (distance >= minimumDistance) continue;
+          if (distance < 1) {
+            dx = Math.random() - 0.5;
+            dy = Math.random() - 0.5;
+            distance = Math.hypot(dx, dy);
+          }
+          const push = (minimumDistance - distance) * 1.3 * alpha;
+          node.vx = (node.vx ?? 0) + (dx / distance) * push;
+          node.vy = (node.vy ?? 0) + (dy / distance) * push;
+        }
+      })
+      .force("outer-circle", () => {
+        const maximumDistance = Math.min(width, height) * 0.46;
+        for (const node of graph.nodes) {
+          if (node.x == null || node.y == null) continue;
+          const dx = node.x - width / 2;
+          const dy = node.y - height / 2;
+          const distance = Math.hypot(dx, dy);
+          const limit = maximumDistance - (node.radius ?? 0);
+          if (distance <= limit || distance === 0) continue;
+          const push = (distance - limit) * 0.45;
+          node.vx = (node.vx ?? 0) - (dx / distance) * push;
+          node.vy = (node.vy ?? 0) - (dy / distance) * push;
+        }
+      })
+      .velocityDecay(0.36)
+      .alphaDecay(0.025);
+
+    if (orbitNodes.length > 0) {
+      window.setTimeout(() => {
+        orbitEnabled = true;
+        simulation.alphaTarget(ORBIT_SETTINGS.simulationAlpha).restart();
+      }, ORBIT_SETTINGS.startDelayMs);
+    }
+
+    scatterNodes = () => {
+      if (scatterTimer !== undefined) window.clearTimeout(scatterTimer);
+      linkForce.strength(GRAPH_SETTINGS.scatterLinkStrength);
+      for (const node of graph.nodes) {
+        if (node === draggedNode || node.fx != null || node.fy != null) continue;
+        const angle = Math.random() * Math.PI * 2;
+        const speed = (
+          GRAPH_SETTINGS.scatterSpeedMin +
+          Math.random() * (GRAPH_SETTINGS.scatterSpeedMax - GRAPH_SETTINGS.scatterSpeedMin)
+        ) / viewScale;
+        node.vx = (node.vx ?? 0) + Math.cos(angle) * speed;
+        node.vy = (node.vy ?? 0) + Math.sin(angle) * speed;
+      }
+      simulation.alpha(Math.max(simulation.alpha(), GRAPH_SETTINGS.scatterAlpha)).restart();
+      scatterTimer = window.setTimeout(() => {
+        linkForce.strength(GRAPH_SETTINGS.linkStrength);
+        simulation.alpha(0.35).restart();
+        scatterTimer = undefined;
+      }, GRAPH_SETTINGS.scatterDurationMs);
+    };
+
+    function readThemeColors() {
+      const styles = getComputedStyle(document.documentElement);
+      return {
+        line: styles.getPropertyValue("--graph-line").trim() || "#999",
+        node: styles.getPropertyValue("--graph-node").trim() || "#222",
+        text: styles.getPropertyValue("--text-normal").trim() || "#111",
+        glow: styles.getPropertyValue("--graph-glow").trim() || "transparent",
+        background: styles.getPropertyValue("--background-primary").trim() || "#fff",
+      };
+    }
+
+    function resize() {
+      const bounds = canvas.getBoundingClientRect();
+      width = bounds.width;
+      height = bounds.height;
+      homeRadius = width < 680
+        ? Math.min(GRAPH_SETTINGS.homeClearanceMobile, Math.min(width, height) * 0.25)
+        : GRAPH_SETTINGS.homeClearanceDesktop;
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      simulation.force("center", forceCenter(width / 2, height / 2));
+      simulation.force("x", forceX(width / 2).strength(0.035));
+      simulation.force("y", forceY(height / 2).strength(0.035));
+      simulation.alpha(0.35).restart();
+    }
+
+    function labelOpacity() {
+      if (viewScale <= GRAPH_SETTINGS.labelHiddenAt) return 0;
+      if (viewScale >= GRAPH_SETTINGS.labelFadeStartsAt) return 1;
+      return (
+        (viewScale - GRAPH_SETTINGS.labelHiddenAt) /
+        (GRAPH_SETTINGS.labelFadeStartsAt - GRAPH_SETTINGS.labelHiddenAt)
+      );
+    }
+
+    function screenPosition(node: GraphNode) {
+      return {
+        x: (node.x! - width / 2) * viewScale + width / 2,
+        y: (node.y! - height / 2) * viewScale + height / 2,
+      };
+    }
+
+    function rectangleTouchesCircle(rect: LabelRect, x: number, y: number, radius: number) {
+      const nearestX = Math.max(rect.left, Math.min(x, rect.right));
+      const nearestY = Math.max(rect.top, Math.min(y, rect.bottom));
+      return Math.hypot(nearestX - x, nearestY - y) < radius;
+    }
+
+    function layoutRectangle(layout: LabelLayout): LabelRect {
+      return {
+        left: layout.x - layout.width / 2,
+        right: layout.x + layout.width / 2,
+        top: layout.y - layout.height / 2,
+        bottom: layout.y + layout.height / 2,
+      };
+    }
+
+    function rectanglesOverlap(first: LabelRect, second: LabelRect, gap = 5) {
+      return !(
+        first.right + gap <= second.left ||
+        first.left >= second.right + gap ||
+        first.bottom + gap <= second.top ||
+        first.top >= second.bottom + gap
+      );
+    }
+
+    function drawLabels(now: number) {
+      const opacity = labelOpacity();
+      const hoverIsEligible = hoveredNode !== null && (hoveredNode.degree ?? 0) >= minimumLabelLinks;
+      if (opacity <= 0 && !hoverIsEligible) return;
+      const fontSize = Math.max(11, Math.min(17, 14 * viewScale));
+      const textHeight = fontSize + 4;
+      context.font = `${fontSize}px "LXGW WenKai Web", "Microsoft YaHei", sans-serif`;
+      context.textBaseline = "middle";
+      context.lineJoin = "round";
+
+      let candidates = labeledNodes;
+      if (hoverIsEligible && maximumVisibleLabels > 0) {
+        candidates = labeledNodes.includes(hoveredNode!)
+          ? [hoveredNode!, ...labeledNodes.filter((node) => node !== hoveredNode)]
+          : [hoveredNode!, ...labeledNodes.slice(0, maximumVisibleLabels - 1)];
+      }
+      const gifRadius = width < 680 ? 90 : 120;
+      const layoutKey = `${width}:${height}:${viewScale.toFixed(3)}:${candidates.map((node) => node.id).join("|")}`;
+      const shouldUpdateLayout = layoutKey !== lastLabelLayoutKey || now - lastLabelLayoutAt >= 80;
+      const layouts: LabelLayout[] = [];
+      for (const [priority, node] of candidates.entries()) {
+        if (node.x == null || node.y == null || (opacity <= 0 && node !== hoveredNode)) continue;
+        const { x, y } = screenPosition(node);
+        const textWidth = context.measureText(node.title).width;
+        const gap = (node.radius ?? 0) * viewScale + 7;
+        const outwardLabel = (node.degree ?? 0) >= ORBIT_SETTINGS.minimumLinks;
+        let labelX = x;
+        let labelY = y + gap + textHeight / 2;
+        if (outwardLabel) {
+          // 高链接节点会绕首页中心旋转。名称始终放在远离 GIF 的一侧，
+          // 方向随公转连续变化，不会在上下左右候选位置之间突然跳动。
+          const centerDx = x - width / 2;
+          const centerDy = y - height / 2;
+          const centerDistance = Math.hypot(centerDx, centerDy) || 1;
+          const directionX = centerDx / centerDistance;
+          const directionY = centerDy / centerDistance;
+          const labelDistance = gap +
+            Math.abs(directionX) * textWidth / 2 +
+            Math.abs(directionY) * textHeight / 2;
+          labelX = x + directionX * labelDistance;
+          labelY = y + directionY * labelDistance;
+
+          // 靠近画面边缘时平滑贴住安全区，不因越界而让重要名称消失。
+          const minimumX = 10 + textWidth / 2;
+          const maximumX = width - 10 - textWidth / 2;
+          labelX = minimumX <= maximumX
+            ? Math.max(minimumX, Math.min(maximumX, labelX))
+            : width / 2;
+          labelY = Math.max(10 + textHeight / 2, Math.min(height - 10 - textHeight / 2, labelY));
+        }
+        const previousOffset = labelOffsetTargets.get(node.id) ?? labelOffsets.get(node.id);
+        layouts.push({
+          node,
+          x: labelX + (previousOffset?.x ?? 0),
+          y: labelY + (previousOffset?.y ?? 0),
+          preferredX: labelX,
+          preferredY: labelY,
+          width: textWidth,
+          height: textHeight,
+          priority,
+        });
+      }
+
+      if (shouldUpdateLayout) {
+        // 避让只低频计算目标位置；绘制帧只插值追踪目标，防止高频抖动和视觉重影。
+        for (const layout of layouts) {
+          const followStrength = layout.priority === 0 ? 0.2 : 0.12;
+          layout.x += (layout.preferredX - layout.x) * followStrength;
+          layout.y += (layout.preferredY - layout.y) * followStrength;
+        }
+        for (let iteration = 0; iteration < 48; iteration += 1) {
+          for (const layout of layouts) {
+            const rect = layoutRectangle(layout);
+            if (rectangleTouchesCircle(rect, width / 2, height / 2, gifRadius)) {
+              const deltaX = layout.x - width / 2;
+              const deltaY = layout.y - height / 2;
+              const distance = Math.hypot(deltaX, deltaY) || 1;
+              layout.x += deltaX / distance * 5;
+              layout.y += deltaY / distance * 5;
+            }
+            layout.x = Math.max(10 + layout.width / 2, Math.min(width - 10 - layout.width / 2, layout.x));
+            layout.y = Math.max(10 + layout.height / 2, Math.min(height - 10 - layout.height / 2, layout.y));
+          }
+
+          for (let firstIndex = 0; firstIndex < layouts.length; firstIndex += 1) {
+            const first = layouts[firstIndex];
+            for (let secondIndex = firstIndex + 1; secondIndex < layouts.length; secondIndex += 1) {
+              const second = layouts[secondIndex];
+              const deltaX = second.x - first.x;
+              const deltaY = second.y - first.y;
+              const overlapX = (first.width + second.width) / 2 + 6 - Math.abs(deltaX);
+              const overlapY = (first.height + second.height) / 2 + 6 - Math.abs(deltaY);
+              if (overlapX <= 0 || overlapY <= 0) continue;
+
+              // 数组已经按链接数排序：高优先级名称少移动，低优先级名称多让位。
+              const firstShare = 0.18;
+              const secondShare = 0.82;
+              if (overlapX < overlapY) {
+                const direction = deltaX === 0 ? (secondIndex % 2 === 0 ? 1 : -1) : Math.sign(deltaX);
+                first.x -= direction * overlapX * firstShare;
+                second.x += direction * overlapX * secondShare;
+              } else {
+                const direction = deltaY === 0 ? (secondIndex % 2 === 0 ? 1 : -1) : Math.sign(deltaY);
+                first.y -= direction * overlapY * firstShare;
+                second.y += direction * overlapY * secondShare;
+              }
+            }
+          }
+        }
+        for (const layout of layouts) {
+          // 避让不能让名称脱离所属节点：高优先级名称更贴近节点，
+          // 其余名称也只允许在锚点周围有限范围内移动。
+          const maximumOffset = layout.priority < 4 ? 22 : 32;
+          const offsetX = layout.x - layout.preferredX;
+          const offsetY = layout.y - layout.preferredY;
+          const offsetDistance = Math.hypot(offsetX, offsetY);
+          const scale = offsetDistance > maximumOffset ? maximumOffset / offsetDistance : 1;
+          labelOffsetTargets.set(layout.node.id, {
+            x: offsetX * scale,
+            y: offsetY * scale,
+          });
+        }
+        lastLabelLayoutAt = now;
+        lastLabelLayoutKey = layoutKey;
+      }
+
+      const frameDuration = lastLabelFrameAt ? Math.min(now - lastLabelFrameAt, 50) : 16.67;
+      const motionFactor = 1 - Math.exp(-frameDuration / 210);
+      const occupiedLabelRects: LabelRect[] = [];
+      for (const layout of layouts) {
+        const { node } = layout;
+        const targetOffset = labelOffsetTargets.get(node.id) ?? { x: 0, y: 0 };
+        const previousOffset = labelOffsets.get(node.id) ?? targetOffset;
+        const offset = {
+          x: previousOffset.x + (targetOffset.x - previousOffset.x) * motionFactor,
+          y: previousOffset.y + (targetOffset.y - previousOffset.y) * motionFactor,
+        };
+        labelOffsets.set(node.id, offset);
+        const position = {
+          x: layout.preferredX + offset.x,
+          y: layout.preferredY + offset.y,
+        };
+
+        // 名称按链接数优先级依次占位。若当前位置会与更重要的名称重叠，
+        // 直接少显示一个，不再为了达到数量上限而把名称推离所属节点。
+        const labelRect: LabelRect = {
+          left: position.x - layout.width / 2,
+          right: position.x + layout.width / 2,
+          top: position.y - layout.height / 2,
+          bottom: position.y + layout.height / 2,
+        };
+        if (occupiedLabelRects.some((occupied) => rectanglesOverlap(labelRect, occupied))) {
+          continue;
+        }
+        occupiedLabelRects.push(labelRect);
+
+        const previousOpacity = labelOpacities.get(node.id) ?? 0;
+        const nextOpacity = previousOpacity + (1 - previousOpacity) * 0.16;
+        labelOpacities.set(node.id, nextOpacity);
+        context.globalAlpha = nextOpacity * (node === hoveredNode ? 1 : opacity);
+        context.textAlign = "center";
+        context.fillStyle = colors.text;
+        context.fillText(node.title, position.x, position.y);
+      }
+      lastLabelFrameAt = now;
+      context.globalAlpha = 1;
+    }
+
+    function updateOrbits(now: number) {
+      const elapsedSeconds = lastOrbitFrame ? Math.min((now - lastOrbitFrame) / 1000, 0.05) : 0;
+      lastOrbitFrame = now;
+      if (!orbitEnabled || width === 0 || height === 0) return;
+
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const maximumRadius = Math.min(width, height) * 0.46;
+      for (const node of orbitNodes) {
+        if (node.x == null || node.y == null) continue;
+        if (node === draggedNode) {
+          continue;
+        }
+        let orbit = orbitStates.get(node.id);
+        if (!orbit) {
+          orbit = {
+            angle: Math.atan2(node.y - centerY, node.x - centerX),
+            radius: Math.hypot(node.x - centerX, node.y - centerY),
+          };
+          orbitStates.set(node.id, orbit);
+        }
+        // Canvas 的 Y 轴朝下，因此角度递增就是顺时针公转。
+        orbit.angle += ORBIT_SETTINGS.degreesPerSecond * Math.PI / 180 * elapsedSeconds;
+        const minimumRadius = (homeRadius + GRAPH_SETTINGS.homeGap) / viewScale + (node.radius ?? 0);
+        const radius = Math.min(maximumRadius - (node.radius ?? 0), Math.max(minimumRadius, orbit.radius));
+        const targetX = centerX + Math.cos(orbit.angle) * radius;
+        const targetY = centerY + Math.sin(orbit.angle) * radius;
+        const returning = orbitReturns.get(node.id);
+        if (returning) {
+          const progress = Math.min(1, (now - returning.startedAt) / ORBIT_SETTINGS.returnDurationMs);
+          const easedProgress = 1 - Math.pow(1 - progress, 3);
+          node.fx = returning.x + (targetX - returning.x) * easedProgress;
+          node.fy = returning.y + (targetY - returning.y) * easedProgress;
+          if (progress >= 1) orbitReturns.delete(node.id);
+        } else {
+          node.fx = targetX;
+          node.fy = targetY;
+        }
+      }
+    }
+
+    function draw(now = performance.now()) {
+      updateOrbits(now);
+      context.clearRect(0, 0, width, height);
+      context.save();
+      context.translate(width / 2, height / 2);
+      context.scale(viewScale, viewScale);
+      context.translate(-width / 2, -height / 2);
+
+      context.strokeStyle = colors.line;
+      context.lineWidth = 1;
+      for (const link of graph.links) {
+        const source = link.source as GraphNode;
+        const target = link.target as GraphNode;
+        if (source.x == null || source.y == null || target.x == null || target.y == null) continue;
+        context.beginPath();
+        context.moveTo(source.x, source.y);
+        context.lineTo(target.x, target.y);
+        context.stroke();
+      }
+
+      for (const node of graph.nodes) {
+        if (node.x == null || node.y == null) continue;
+        const radius = node.radius ?? 7;
+        context.shadowColor = colors.glow;
+        context.shadowBlur = 12;
+        context.fillStyle = colors.node;
+        context.beginPath();
+        context.arc(node.x, node.y, radius, 0, Math.PI * 2);
+        context.fill();
+
+      }
+
+      context.restore();
+      drawLabels(now);
+      requestAnimationFrame(draw);
+    }
+
+    function pointerPosition(event: PointerEvent | WheelEvent) {
+      const bounds = canvas.getBoundingClientRect();
+      return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+    }
+
+    function graphPosition(point: { x: number; y: number }) {
+      return {
+        x: (point.x - width / 2) / viewScale + width / 2,
+        y: (point.y - height / 2) / viewScale + height / 2,
+      };
+    }
+
+    function nearestNode(point: { x: number; y: number }) {
+      const graphPoint = graphPosition(point);
+      let nearest: GraphNode | null = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      for (const node of graph.nodes) {
+        if (node.x == null || node.y == null) continue;
+        const distance = Math.hypot(node.x - graphPoint.x, node.y - graphPoint.y);
+        const hitDistance = (node.radius ?? 7) + 9 / viewScale;
+        if (distance <= hitDistance && distance < nearestDistance) {
+          nearest = node;
+          nearestDistance = distance;
+        }
+      }
+      return nearest;
+    }
+
+    canvas.addEventListener(
+      "wheel",
+      (event) => {
+        event.preventDefault();
+        const zoomFactor = Math.exp(-event.deltaY * GRAPH_SETTINGS.zoomSensitivity);
+        const nextScale = Math.min(
+          GRAPH_SETTINGS.maxZoom,
+          Math.max(GRAPH_SETTINGS.minZoom, viewScale * zoomFactor),
+        );
+        if (nextScale === viewScale) return;
+        // 缩放只是视角变换，不重启力模拟，节点和标签保持原位不动。
+        viewScale = nextScale;
+      },
+      { passive: false },
+    );
+
+    canvas.addEventListener("pointerdown", (event) => {
+      const point = pointerPosition(event);
+      const node = nearestNode(point);
+      if (!node) return;
+
+      draggedNode = node;
+      pointerStart = point;
+      pointerMoved = false;
+      orbitReturns.delete(node.id);
+      if (orbitEnabled && orbitNodes.includes(node) && !orbitStates.has(node.id)) {
+        const centerX = width / 2;
+        const centerY = height / 2;
+        orbitStates.set(node.id, {
+          angle: Math.atan2((node.y ?? centerY) - centerY, (node.x ?? centerX) - centerX),
+          radius: Math.hypot((node.x ?? centerX) - centerX, (node.y ?? centerY) - centerY),
+        });
+      }
+      node.fx = node.x;
+      node.fy = node.y;
+      canvas.setPointerCapture(event.pointerId);
+      simulation.alphaTarget(0.25).restart();
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      const point = pointerPosition(event);
+      hoveredNode = draggedNode ?? nearestNode(point);
+      if (!draggedNode) return;
+      if (Math.hypot(point.x - pointerStart.x, point.y - pointerStart.y) > 4) {
+        pointerMoved = true;
+      }
+      const graphPoint = graphPosition(point);
+      draggedNode.fx = graphPoint.x;
+      draggedNode.fy = graphPoint.y;
+    });
+
+    function finishPointer(event: PointerEvent) {
+      if (!draggedNode) return;
+      const node = draggedNode;
+      draggedNode = null;
+      if (orbitEnabled && orbitNodes.includes(node) && pointerMoved) {
+        // 高链接节点保留拖动前的轨道；从松手位置平滑返回，而不是把新位置当作新轨道。
+        orbitReturns.set(node.id, {
+          x: node.x ?? node.fx ?? width / 2,
+          y: node.y ?? node.fy ?? height / 2,
+          startedAt: performance.now(),
+        });
+        node.fx = node.x;
+        node.fy = node.y;
+      } else {
+        node.fx = null;
+        node.fy = null;
+      }
+      simulation.alphaTarget(orbitEnabled ? ORBIT_SETTINGS.simulationAlpha : 0);
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+      if (!pointerMoved) window.location.assign(node.url);
+    }
+
+    canvas.addEventListener("pointerup", finishPointer);
+    canvas.addEventListener("pointercancel", finishPointer);
+    canvas.addEventListener("pointerleave", (event) => {
+      hoveredNode = null;
+      if (draggedNode && event.buttons === 0) finishPointer(event);
+    });
+
+    // 尺寸变化（含侧边栏开合的 180ms 过渡）合并成一次重排，避免动画期间每帧都重启力模拟。
+    let resizeTimer: number | undefined;
+    function scheduleResize() {
+      if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeTimer = undefined;
+        resize();
+      }, 160);
+    }
+    const resizeObserver = new ResizeObserver(scheduleResize);
+    resizeObserver.observe(canvas);
+    window.addEventListener("resize", scheduleResize);
+    window.addEventListener("themechange", () => {
+      colors = readThemeColors();
+    });
+    resize();
+    draw();
+  }
+</script>
+
+<style>
+  .graph-page {
+    position: relative;
+    isolation: isolate;
+    width: 100%;
+    height: 100vh;
+    min-height: 560px;
+    overflow: hidden;
+    background: var(--background-primary);
+  }
+
+  .graph-page::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    opacity: 0.2;
+    background-image: radial-gradient(var(--graph-dot) 0.65px, transparent 0.65px);
+    background-size: 22px 22px;
+    content: "";
+  }
+
+  canvas {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: default;
+    touch-action: none;
+  }
+
+  .home-core {
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    left: 50%;
+    width: 200px;
+    height: 200px;
+    margin: 0;
+    padding: 0;
+    cursor: default;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: transform 140ms ease;
+  }
+
+  .home-core:active {
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+
+  .home-core:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 6px;
+  }
+
+  .home-core img {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 16px 22px var(--hero-shadow));
+  }
+
+  .gif-halo {
+    position: absolute;
+    inset: 19%;
+    background: var(--hero-halo);
+    border-radius: 50%;
+    filter: blur(32px);
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 0.62;
+      transform: scale(0.94);
+    }
+
+    50% {
+      opacity: 0.88;
+      transform: scale(1.06);
+    }
+  }
+
+  @media (max-width: 680px) {
+    .home-core {
+      width: 148px;
+      height: 148px;
+    }
+  }
+
+  #empty-message {
+    margin: 24px;
+  }
+</style>

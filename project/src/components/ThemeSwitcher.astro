@@ -1,0 +1,145 @@
+<div class="theme-switcher" role="group" aria-label="网站配色">
+  <button type="button" data-set-theme="white" aria-label="白色主题" class="tip-down" data-tip="白色主题"></button>
+  <button type="button" data-set-theme="black" aria-label="黑色主题" class="tip-down" data-tip="黑色主题"></button>
+  <span class="theme-extra">
+    <button type="button" data-set-theme="blue" aria-label="蓝色主题" class="tip-down" data-tip="蓝色主题"></button>
+    <button type="button" data-set-theme="pink" aria-label="粉色主题" class="tip-down" data-tip="粉色主题"></button>
+    <button type="button" data-set-theme="yellow" aria-label="黄色主题" class="tip-down" data-tip="黄色主题"></button>
+    <button type="button" data-set-theme="green" aria-label="绿色主题" class="tip-down" data-tip="绿色主题"></button>
+    <button type="button" data-set-theme="purple" aria-label="紫色主题" class="tip-down" data-tip="紫色主题"></button>
+  </span>
+  <button
+    type="button"
+    class="theme-more tip-down-end"
+    data-toggle-themes
+    aria-label="更多配色"
+    aria-expanded="false"
+    data-tip="展开更多配色">⋯</button>
+</div>
+
+<script>
+  const themeButtons = document.querySelectorAll<HTMLButtonElement>("[data-set-theme]");
+
+  function syncThemeButtons() {
+    const current = document.documentElement.dataset.theme ?? "blue";
+    for (const button of themeButtons) {
+      button.setAttribute("aria-pressed", String(button.dataset.setTheme === current));
+    }
+  }
+
+  // 移动端浏览器的状态栏/地址栏颜色跟着主题底色走（BaseLayout 里有对应的 meta）
+  function syncThemeColor() {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) return;
+    const background = getComputedStyle(document.documentElement)
+      .getPropertyValue("--background-primary")
+      .trim();
+    if (background) meta.setAttribute("content", background);
+  }
+
+  for (const button of themeButtons) {
+    button.addEventListener("click", () => {
+      const theme = button.dataset.setTheme;
+      if (!theme) return;
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem("site-theme", theme);
+      syncThemeButtons();
+      syncThemeColor();
+      window.dispatchEvent(new CustomEvent("themechange"));
+    });
+  }
+
+  syncThemeButtons();
+  syncThemeColor();
+
+  const themeMoreButton = document.querySelector<HTMLButtonElement>("[data-toggle-themes]");
+  const themeSwitcher = document.querySelector<HTMLElement>(".theme-switcher");
+
+  if (themeMoreButton && themeSwitcher) {
+    themeMoreButton.addEventListener("click", () => {
+      const expanded = themeSwitcher.getAttribute("data-expanded") === "true";
+      themeSwitcher.setAttribute("data-expanded", String(!expanded));
+      themeMoreButton.setAttribute("aria-expanded", String(!expanded));
+      themeMoreButton.dataset.tip = expanded ? "展开更多配色" : "收起更多配色";
+    });
+  }
+</script>
+
+<style>
+  .theme-switcher {
+    position: fixed;
+    z-index: 50;
+    top: 17px;
+    right: 18px;
+    display: flex;
+    gap: 10px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-primary) 88%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+
+  button {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
+
+  button[data-set-theme="blue"] {
+    background: #7fa3c2;
+  }
+
+  button[data-set-theme="pink"] {
+    background: #db9db4;
+  }
+
+  button[data-set-theme="white"] {
+    background: #f7f7f4;
+  }
+
+  button[data-set-theme="black"] {
+    background: #55565a;
+  }
+
+  button[data-set-theme="yellow"] {
+    background: #e3c86e;
+  }
+
+  button[data-set-theme="green"] {
+    background: #93c2a0;
+  }
+
+  button[data-set-theme="purple"] {
+    background: #b3a0d6;
+  }
+
+  button[aria-pressed="true"] {
+    border-color: var(--surface-primary);
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  .theme-extra {
+    display: none;
+    gap: 10px;
+  }
+
+  .theme-switcher[data-expanded="true"] .theme-extra {
+    display: flex;
+  }
+
+  .theme-more {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .theme-more:hover {
+    background: var(--surface-hover);
+  }
+</style>

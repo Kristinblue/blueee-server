@@ -1,0 +1,55 @@
+# 项目无关文件夹
+zipped/
+logs/
+test/
+SSL/
+info/
+# 只忽略仓库根目录的 assets（个人素材）；project 内的字体、笔记图片需要进仓库
+/assets/
+*AGENTS.md
+
+# 敏感与本地文件：正式配置含数据库密码，绝不进仓库
+website-comments-config.php
+*.tar.gz
+# 服务器运维脚本（含宝塔面板地址）和本地备份目录，不进公开仓库
+project/server/check-phpmyadmin-login.py
+.backup-*/
+
+#使用ai的
+**/.zcode/
+.zcodeignore
+
+
+***.codex/
+codex_cache/
+
+# Python 相关缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*$py.class
+
+# 日志文件
+*.log
+*.log.*
+
+# 编辑器配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 编译/生成文件
+build/
+dist/
+*.egg-info/
+
+#我放的pdf
+*.pdf

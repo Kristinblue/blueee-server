@@ -1,0 +1,351 @@
+.note-page {
+  width: min(100% - 40px, 900px);
+  margin: 0 auto;
+  padding: 76px 0 72px;
+}
+
+.note-article {
+  padding: clamp(24px, 5vw, 52px);
+  color: var(--text-normal);
+  background: color-mix(in srgb, var(--surface-primary) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 78%, transparent);
+  border-radius: 20px;
+  box-shadow: 0 18px 60px var(--shadow-color);
+  font-size: 17px;
+  line-height: 1.8;
+}
+
+.note-title {
+  margin: 0 0 12px;
+  color: var(--heading-color);
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.2;
+}
+
+.note-description {
+  margin: 0 0 38px;
+  color: var(--text-muted);
+}
+
+.note-body h1,
+.note-body h2,
+.note-body h3,
+.note-body h4,
+.note-body h5,
+.note-body h6 {
+  color: var(--heading-color);
+  line-height: 1.35;
+  scroll-margin-top: 24px;
+}
+
+.note-body h1 {
+  margin: 2.2em 0 0.8em;
+  font-size: 2rem;
+}
+
+.note-body h2 {
+  margin: 2em 0 0.7em;
+  padding-bottom: 0.3em;
+  font-size: 1.55rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.note-body h3 {
+  margin: 1.7em 0 0.6em;
+  font-size: 1.25rem;
+}
+
+.note-body p,
+.note-body ul,
+.note-body ol,
+.note-body blockquote,
+.note-body table,
+.note-body pre {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+.note-body a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.note-body mark {
+  padding: 0.05em 0.16em;
+  color: var(--text-normal);
+  background: var(--selection);
+  border-radius: 3px;
+}
+
+.note-body img {
+  display: block;
+  margin: 24px auto;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.note-body blockquote {
+  margin-left: 0;
+  padding: 13px 18px;
+  color: var(--text-muted);
+  background: var(--surface-secondary);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+}
+
+.note-body blockquote > :first-child {
+  margin-top: 0;
+}
+
+.note-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.note-body .callout {
+  margin: 1.25em 0;
+  padding: 14px 18px;
+  color: var(--text-normal);
+  background: var(--surface-secondary);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+}
+
+.note-body .callout-title {
+  margin-bottom: 8px;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.note-body .callout > :last-child {
+  margin-bottom: 0;
+}
+
+/* 按 Obsidian 的语义给各类型提示框分色：左边框/标题同色，
+   背景以 8% 浓度掺入当前主题底色，明暗主题都可读 */
+.note-body .callout-note,
+.note-body .callout-info,
+.note-body .callout-todo {
+  border-left-color: #3f779e;
+  background: color-mix(in srgb, #3f779e 8%, var(--surface-secondary));
+}
+
+.note-body .callout-note .callout-title,
+.note-body .callout-info .callout-title,
+.note-body .callout-todo .callout-title {
+  color: #3f779e;
+}
+
+.note-body .callout-abstract,
+.note-body .callout-summary,
+.note-body .callout-tldr {
+  border-left-color: #0e8a8a;
+  background: color-mix(in srgb, #0e8a8a 8%, var(--surface-secondary));
+}
+
+.note-body .callout-abstract .callout-title,
+.note-body .callout-summary .callout-title,
+.note-body .callout-tldr .callout-title {
+  color: #0e8a8a;
+}
+
+.note-body .callout-tip,
+.note-body .callout-hint {
+  border-left-color: #2e8b57;
+  background: color-mix(in srgb, #2e8b57 8%, var(--surface-secondary));
+}
+
+.note-body .callout-tip .callout-title,
+.note-body .callout-hint .callout-title {
+  color: #2e8b57;
+}
+
+.note-body .callout-important {
+  border-left-color: #7852ee;
+  background: color-mix(in srgb, #7852ee 8%, var(--surface-secondary));
+}
+
+.note-body .callout-important .callout-title {
+  color: #7852ee;
+}
+
+.note-body .callout-warning,
+.note-body .callout-caution {
+  border-left-color: #b8860b;
+  background: color-mix(in srgb, #b8860b 10%, var(--surface-secondary));
+}
+
+.note-body .callout-warning .callout-title,
+.note-body .callout-caution .callout-title {
+  color: #9a7009;
+}
+
+.note-body .callout-danger,
+.note-body .callout-error,
+.note-body .callout-bug,
+.note-body .callout-failure {
+  border-left-color: #c0392b;
+  background: color-mix(in srgb, #c0392b 8%, var(--surface-secondary));
+}
+
+.note-body .callout-danger .callout-title,
+.note-body .callout-error .callout-title,
+.note-body .callout-bug .callout-title,
+.note-body .callout-failure .callout-title {
+  color: #c0392b;
+}
+
+.note-body .callout-example {
+  border-left-color: #8b3f78;
+  background: color-mix(in srgb, #8b3f78 8%, var(--surface-secondary));
+}
+
+.note-body .callout-example .callout-title {
+  color: #8b3f78;
+}
+
+.note-body .callout-quote,
+.note-body .callout-cite {
+  border-left-color: #8a8a8a;
+}
+
+.note-body .callout-quote .callout-title,
+.note-body .callout-cite .callout-title {
+  color: var(--text-muted);
+}
+
+.note-body table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-spacing: 0;
+  border-collapse: collapse;
+}
+
+.note-body th,
+.note-body td {
+  padding: 9px 12px;
+  border: 1px solid var(--border-color);
+}
+
+.note-body th {
+  color: var(--accent-strong);
+  background: var(--surface-secondary);
+}
+
+.note-body :not(pre) > code {
+  padding: 0.12em 0.36em;
+  color: var(--accent-strong);
+  background: var(--code-background);
+  border-radius: 4px;
+  font-family: "Ubuntu Mono Web", "Sarasa Mono SC Web", Consolas, "Microsoft YaHei", monospace;
+  font-size: 0.96em;
+}
+
+.note-body .code-block {
+  position: relative;
+  overflow-x: auto;
+  padding: 20px 18px 16px;
+  color: var(--text-normal);
+  background: var(--code-background);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.note-body .code-block[data-language] {
+  padding-top: 32px;
+}
+
+.note-body .code-block[data-language]::before {
+  position: absolute;
+  top: 7px;
+  right: 11px;
+  color: var(--text-muted);
+  font-family: "Ubuntu Mono Web", "Sarasa Mono SC Web", Consolas, "Microsoft YaHei", monospace;
+  font-size: 12px;
+  content: attr(data-language);
+}
+
+.note-body .code-block code,
+.note-body .hljs {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font-family: "Ubuntu Mono Web", "Sarasa Mono SC Web", Consolas, "Microsoft YaHei", monospace;
+  font-size: 16px;
+  font-variant-ligatures: none;
+  line-height: 1.55;
+  tab-size: 4;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section,
+.hljs-link {
+  color: var(--syntax-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-attribute,
+.hljs-addition {
+  color: var(--syntax-string);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-deletion {
+  color: var(--syntax-number);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-title.class_,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--syntax-title);
+}
+
+.hljs-built_in,
+.hljs-type,
+.hljs-meta,
+.hljs-name {
+  color: var(--syntax-built-in);
+}
+
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params,
+.hljs-property {
+  color: var(--syntax-variable);
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+@media (max-width: 760px) {
+  .note-page {
+    width: min(100% - 28px, 900px);
+    padding-top: 70px;
+  }
+
+  .note-article {
+    padding: 22px 18px 30px;
+    border-radius: 14px;
+    font-size: 16px;
+  }
+}

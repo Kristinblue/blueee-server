@@ -1,0 +1,63 @@
+---
+import "../styles/global.css";
+import NavigationSidebar from "../components/NavigationSidebar.astro";
+import ThemeSwitcher from "../components/ThemeSwitcher.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import type { TocHeading } from "../lib/toc";
+
+interface Props {
+  title: string;
+  /** 笔记页传入：侧栏改为展示本文标题目录 */
+  toc?: TocHeading[];
+  tocTitle?: string;
+}
+
+const { title, toc, tocTitle } = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    {/* 移动端浏览器状态栏/地址栏颜色，ThemeSwitcher 会随主题实时更新 */}
+    <meta name="theme-color" content="#f5f9fc" />
+    {/* 分片字体：按 unicode-range 只加载页面用到的片段 */}
+    <link rel="stylesheet" href="/generated/fonts/fonts.css" />
+    <script is:inline>
+      (() => {
+        const allowed = new Set(["blue", "pink", "white", "black", "yellow", "green", "purple"]);
+        const saved = localStorage.getItem("site-theme");
+        document.documentElement.dataset.theme = saved && allowed.has(saved) ? saved : "blue";
+        const sidebar = localStorage.getItem("sidebar-open");
+        const defaultSidebarOpen = window.matchMedia("(min-width: 761px)").matches;
+        // 手机/窄屏上侧栏是浮层，始终收起（点左上角按钮打开，点内容区域关闭）；
+        // 桌面上：笔记页每次进入都自动收起目录栏，把宽度留给正文；
+        // 首页维持用户上一次的选择（没动过则宽屏展开、窄屏收起）
+        const onSmallScreen = window.matchMedia("(max-width: 760px)").matches;
+        const onNotePage = location.pathname.startsWith("/notes/");
+        document.documentElement.dataset.sidebar = onSmallScreen
+          ? "closed"
+          : onNotePage
+            ? "closed"
+            : sidebar === null
+              ? (defaultSidebarOpen ? "open" : "closed")
+              : (sidebar === "false" ? "closed" : "open");
+      })();
+    </script>
+    {/* 浏览器标签与搜索结果里始终显示站点名，不随笔记标题变化 */}
+    <title>小何的个人站点</title>
+  </head>
+  <body>
+    <NavigationSidebar toc={toc} tocTitle={tocTitle} />
+    <ThemeSwitcher />
+    <div class="site-content">
+      <slot />
+      <SiteFooter />
+    </div>
+  </body>
+</html>

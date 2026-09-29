@@ -1,0 +1,393 @@
+---
+import "../styles/comments.css";
+
+interface Props {
+  noteSlug: string;
+}
+
+const { noteSlug } = Astro.props;
+---
+
+<section class="comments" data-note-slug={noteSlug} aria-labelledby="comments-heading">
+  <h2 id="comments-heading" class="comments-heading">留言区</h2>
+  <form class="comment-form">
+    <p class="comment-identity" hidden>将以「<span class="comment-identity-name"></span>」的身份发言</p>
+    <div class="comment-replying" hidden>
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M11 5 4 12l7 7M4 12h9a7 7 0 0 1 7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+      <span class="comment-replying-text"></span>
+      <button class="comment-replying-cancel" type="button" aria-label="取消回复" title="取消回复（Esc）">✕</button>
+    </div>
+    <label class="sr-only" for="comment-content">写评论</label>
+    <div class="comment-composer">
+      <textarea id="comment-content" name="content" rows="1" maxlength="1000" required></textarea>
+      <div class="comment-actions">
+        <span class="comment-shortcut" aria-hidden="true">Ctrl+Enter</span>
+        <button class="comment-send" type="submit" aria-label="发送评论" title="发送评论">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </button>
+      </div>
+    </div>
+    <p class="comment-feedback" role="status" aria-live="polite"></p>
+  </form>
+  <div class="comment-list" aria-live="polite"></div>
+  <button class="comments-more" type="button" hidden>加载更多评论</button>
+</section>
+
+<script>
+  const prompts = [
+    "恶语伤汪心",
+    "欢迎留下你滴思考(≧∇≦)ﾉ  ",
+    "在这里留下你的想法，或者踩过的坑  ",
+    "看你很久了，来两句？",
+    "不断进步q(≧▽≦q)",
+  ];
+
+  interface ApiComment {
+    id: number;
+    parentId: number | null;
+    authorName: string | null;
+    content: string;
+    createdAt: string;
+    replyCount?: number;
+  }
+
+  const section = document.querySelector<HTMLElement>(".comments");
+  if (section) {
+    const form = section.querySelector<HTMLFormElement>(".comment-form")!;
+    const textarea = section.querySelector<HTMLTextAreaElement>("textarea")!;
+    const feedback = section.querySelector<HTMLElement>(".comment-feedback")!;
+    const list = section.querySelector<HTMLElement>(".comment-list")!;
+    const more = section.querySelector<HTMLButtonElement>(".comments-more")!;
+    const send = section.querySelector<HTMLButtonElement>(".comment-send")!;
+    const replyingBar = section.querySelector<HTMLElement>(".comment-replying")!;
+    const replyingText = section.querySelector<HTMLElement>(".comment-replying-text")!;
+    const replyingCancel = section.querySelector<HTMLButtonElement>(".comment-replying-cancel")!;
+    const identityBar = section.querySelector<HTMLElement>(".comment-identity")!;
+    const identityName = section.querySelector<HTMLElement>(".comment-identity-name")!;
+    const note = section.dataset.noteSlug!;
+    let nextBefore: number | null = null;
+    let loading = false;
+    let initialLoading = true;
+    let submitting = false;
+    let replyTo: { id: number; rootId: number } | null = null;
+
+    send.disabled = true;
+
+    const basePlaceholder = prompts[Math.floor(Math.random() * prompts.length)];
+    textarea.placeholder = basePlaceholder;
+
+    const resize = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 320)}px`;
+    };
+    textarea.addEventListener("input", resize);
+    textarea.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.ctrlKey && !event.isComposing) {
+        event.preventDefault();
+        form.requestSubmit();
+      } else if (event.key === "Escape" && replyTo) {
+        setReplyTo(null);
+      }
+    });
+
+    const showFeedback = (message: string, error = false) => {
+      feedback.textContent = message;
+      feedback.classList.toggle("is-error", error);
+    };
+
+    const flash = (item: HTMLElement) => {
+      item.classList.remove("is-flash");
+      void item.offsetWidth;
+      item.classList.add("is-flash");
+      window.setTimeout(() => item.classList.remove("is-flash"), 1500);
+    };
+
+    const setReplyTo = (target: { id: number; rootId: number } | null) => {
+      replyTo = target;
+      replyingBar.hidden = target === null;
+      if (target) {
+        replyingText.textContent = `回复 #${target.id}`;
+        textarea.placeholder = `回复 #${target.id}…`;
+      } else {
+        textarea.placeholder = basePlaceholder;
+      }
+    };
+    replyingCancel.addEventListener("click", () => {
+      setReplyTo(null);
+      textarea.focus();
+    });
+
+    const hueOf = (name: string) => {
+      let hash = 0;
+      for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) >>> 0;
+      return hash % 360;
+    };
+    const setVisitorName = (name: string | null | undefined) => {
+      identityBar.hidden = !name;
+      if (name) identityName.textContent = name;
+    };
+
+    const repliesToggleText = (wrap: HTMLElement) => {
+      const toggle = wrap.querySelector<HTMLButtonElement>(".comment-replies-toggle");
+      if (!toggle) return;
+      toggle.textContent = wrap.dataset.state === "collapsed" ? `展开 ${wrap.dataset.count ?? 0} 条回复` : "收起回复";
+    };
+
+    const loadReplies = async (wrap: HTMLElement, rootId: number, append: boolean) => {
+      if (wrap.dataset.state === "loading") return;
+      wrap.dataset.state = "loading";
+      const toggle = wrap.querySelector<HTMLButtonElement>(".comment-replies-toggle")!;
+      const inner = wrap.querySelector<HTMLElement>(".comment-replies-list")!;
+      const moreReplies = wrap.querySelector<HTMLButtonElement>(".comment-replies-more")!;
+      toggle.disabled = true;
+      moreReplies.disabled = true;
+      if (!append) inner.replaceChildren();
+      const hint = document.createElement("p");
+      hint.className = "comment-replies-hint";
+      hint.textContent = "正在加载回复…";
+      inner.append(hint);
+      try {
+        const query = new URLSearchParams({ note, parent: String(rootId) });
+        if (append && wrap.dataset.nextAfter) query.set("after", wrap.dataset.nextAfter);
+        const response = await fetch(`/api/comments.php?${query}`, { credentials: "same-origin" });
+        if (!response.ok) throw new Error("回复加载失败，请稍后重试。");
+        const data = (await response.json()) as { comments: ApiComment[]; nextAfter: number | null };
+        hint.remove();
+        for (const reply of data.comments) inner.append(makeComment(reply, rootId));
+        wrap.dataset.nextAfter = data.nextAfter === null ? "" : String(data.nextAfter);
+        moreReplies.hidden = data.nextAfter === null;
+      } catch (error) {
+        hint.remove();
+        if (!append) inner.textContent = "回复加载失败，收起后再展开即可重试。";
+        else showFeedback(error instanceof Error ? error.message : "回复加载失败。", true);
+      } finally {
+        toggle.disabled = false;
+        moreReplies.disabled = false;
+        wrap.dataset.state = "expanded";
+        repliesToggleText(wrap);
+      }
+    };
+
+    const makeReplies = (rootId: number, count: number) => {
+      const wrap = document.createElement("div");
+      wrap.className = "comment-replies";
+      wrap.dataset.state = "collapsed";
+      wrap.dataset.count = String(count);
+      wrap.dataset.nextAfter = "";
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "comment-replies-toggle";
+      const inner = document.createElement("div");
+      inner.className = "comment-replies-list";
+      inner.hidden = true;
+      const moreReplies = document.createElement("button");
+      moreReplies.type = "button";
+      moreReplies.className = "comment-replies-more";
+      moreReplies.textContent = "加载更多回复";
+      moreReplies.hidden = true;
+      toggle.addEventListener("click", () => {
+        if (wrap.dataset.state === "collapsed") {
+          inner.hidden = false;
+          void loadReplies(wrap, rootId, false);
+        } else if (wrap.dataset.state === "expanded") {
+          wrap.dataset.state = "collapsed";
+          inner.hidden = true;
+          moreReplies.hidden = true;
+          repliesToggleText(wrap);
+        }
+      });
+      moreReplies.addEventListener("click", () => void loadReplies(wrap, rootId, true));
+      wrap.append(toggle, inner, moreReplies);
+      repliesToggleText(wrap);
+      return wrap;
+    };
+
+    const makeComment = (comment: ApiComment, threadRoot?: number) => {
+      const item = document.createElement("article");
+      item.className = "comment-item";
+      if (threadRoot !== undefined) item.classList.add("comment-item--reply");
+      item.dataset.commentId = String(comment.id);
+
+      const avatar = document.createElement("span");
+      avatar.className = "comment-avatar";
+      avatar.setAttribute("aria-hidden", "true");
+      if (comment.authorName) {
+        avatar.textContent = Array.from(comment.authorName)[0] ?? "?";
+        avatar.style.backgroundColor = `hsl(${hueOf(comment.authorName)} 70% 88%)`;
+        avatar.style.color = `hsl(${hueOf(comment.authorName)} 50% 30%)`;
+      } else {
+        avatar.innerHTML = '<svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="11" r="5" fill="currentColor"/><path d="M6 27c0-6 4.5-10 10-10s10 4 10 10" fill="currentColor"/></svg>';
+      }
+
+      const main = document.createElement("div");
+      main.className = "comment-main";
+
+      const nameRow = document.createElement("div");
+      nameRow.className = "comment-name-row";
+      const nameSpan = document.createElement("span");
+      nameSpan.className = comment.authorName ? "comment-name" : "comment-name is-anon";
+      nameSpan.textContent = comment.authorName ?? "匿名";
+      nameRow.append(nameSpan);
+
+      const body = document.createElement("p");
+      body.className = "comment-body is-collapsed";
+      body.textContent = comment.content;
+      const expand = document.createElement("button");
+      expand.className = "comment-expand";
+      expand.type = "button";
+      expand.textContent = "展开全文 ⌄";
+      expand.hidden = true;
+      expand.setAttribute("aria-expanded", "false");
+      expand.addEventListener("click", () => {
+        const expanded = body.classList.toggle("is-collapsed") === false;
+        expand.textContent = expanded ? "收起 ⌃" : "展开全文 ⌄";
+        expand.setAttribute("aria-expanded", String(expanded));
+      });
+
+      const meta = document.createElement("div");
+      meta.className = "comment-meta";
+      const parentId = comment.parentId;
+      if (threadRoot !== undefined && parentId !== null && parentId !== threadRoot) {
+        const ref = document.createElement("button");
+        ref.type = "button";
+        ref.className = "comment-ref";
+        const parentName = list.querySelector(`[data-comment-id="${parentId}"] .comment-name:not(.is-anon)`)?.textContent;
+        ref.textContent = parentName ? `↩ ${parentName}` : `↩ #${parentId}`;
+        ref.title = "跳到被回复的评论";
+        ref.addEventListener("click", () => {
+          const target = list.querySelector<HTMLElement>(`[data-comment-id="${parentId}"]`);
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+            flash(target);
+          }
+        });
+        nameRow.append(ref);
+      }
+      const time = document.createElement("time");
+      time.className = "comment-time";
+      time.dateTime = comment.createdAt;
+      time.textContent = new Intl.DateTimeFormat("zh-CN", {
+        year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+      }).format(new Date(comment.createdAt));
+      const floor = document.createElement("span");
+      floor.className = "comment-floor";
+      floor.textContent = `#${comment.id}`;
+      const replyButton = document.createElement("button");
+      replyButton.type = "button";
+      replyButton.className = "comment-reply";
+      replyButton.textContent = "回复";
+      const rootId = threadRoot ?? comment.id;
+      replyButton.addEventListener("click", () => {
+        setReplyTo({ id: comment.id, rootId });
+        form.scrollIntoView({ behavior: "smooth", block: "center" });
+        textarea.focus({ preventScroll: true });
+      });
+      meta.append(time, floor, replyButton);
+      main.append(nameRow, body, expand, meta);
+      if (threadRoot === undefined && (comment.replyCount ?? 0) > 0) {
+        main.append(makeReplies(comment.id, comment.replyCount ?? 0));
+      }
+      item.append(avatar, main);
+      requestAnimationFrame(() => {
+        expand.hidden = body.scrollHeight <= body.clientHeight + 1;
+      });
+      return item;
+    };
+
+    const addReplyToThread = (rootId: number, reply: ApiComment) => {
+      const rootItem = list.querySelector<HTMLElement>(`[data-comment-id="${rootId}"]`);
+      if (!rootItem) return;
+      let wrap = rootItem.querySelector<HTMLElement>(".comment-replies");
+      if (!wrap) {
+        wrap = makeReplies(rootId, 0);
+        rootItem.querySelector(".comment-main")?.append(wrap);
+      }
+      wrap.dataset.count = String(Number(wrap.dataset.count ?? 0) + 1);
+      if (wrap.dataset.state === "expanded") {
+        wrap.querySelector(".comment-replies-list")?.append(makeComment(reply, rootId));
+        repliesToggleText(wrap);
+      } else {
+        const inner = wrap.querySelector<HTMLElement>(".comment-replies-list");
+        if (inner) inner.hidden = false;
+        void loadReplies(wrap, rootId, false);
+      }
+    };
+
+    const loadComments = async (append = false) => {
+      if (loading) return;
+      loading = true;
+      more.disabled = true;
+      if (!append) list.textContent = "正在加载评论…";
+      try {
+        const query = new URLSearchParams({ note });
+        if (append && nextBefore !== null) query.set("before", String(nextBefore));
+        const response = await fetch(`/api/comments.php?${query}`, { credentials: "same-origin" });
+        if (!response.ok) throw new Error("评论加载失败，请稍后重试。");
+        const data = (await response.json()) as { comments: ApiComment[]; nextBefore: number | null; visitorName?: string | null };
+        if (!append) list.replaceChildren();
+        for (const comment of data.comments) list.append(makeComment(comment));
+        if (!append && data.comments.length === 0) list.textContent = "还没有评论，来留下第一条吧。";
+        nextBefore = data.nextBefore;
+        more.hidden = nextBefore === null;
+        setVisitorName(data.visitorName);
+      } catch (error) {
+        if (!append) list.textContent = "评论加载失败，请刷新页面重试。";
+        else showFeedback(error instanceof Error ? error.message : "评论加载失败。", true);
+      } finally {
+        loading = false;
+        more.disabled = false;
+        if (!append) {
+          initialLoading = false;
+          send.disabled = false;
+        }
+      }
+    };
+
+    more.addEventListener("click", () => loadComments(true));
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (submitting) return;
+      if (initialLoading) {
+        showFeedback("评论加载中，请稍后发送。");
+        return;
+      }
+      const content = textarea.value.trim();
+      if (!content) return;
+      if (Array.from(content).length > 1000) {
+        showFeedback("每条评论最多 1000 字。", true);
+        return;
+      }
+      submitting = true;
+      send.disabled = true;
+      const target = replyTo;
+      showFeedback(target ? "正在发送回复…" : "正在发送…");
+      try {
+        const response = await fetch("/api/comments.php", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(target ? { note, content, parentId: target.id } : { note, content }),
+        });
+        const data = (await response.json()) as { comment?: ApiComment; error?: string };
+        if (!response.ok || !data.comment) throw new Error(data.error || "发送失败，请稍后重试。");
+        if (target) {
+          addReplyToThread(target.rootId, data.comment);
+          setReplyTo(null);
+        } else {
+          if (list.textContent === "还没有评论，来留下第一条吧。" || list.textContent === "评论加载失败，请刷新页面重试。") list.replaceChildren();
+          list.prepend(makeComment(data.comment));
+        }
+        setVisitorName(data.comment.authorName);
+        textarea.value = "";
+        resize();
+        showFeedback(target ? "回复已发送。" : "评论已发送。");
+      } catch (error) {
+        showFeedback(error instanceof Error ? error.message : "发送失败，请稍后重试。", true);
+      } finally {
+        submitting = false;
+        send.disabled = false;
+      }
+    });
+    loadComments();
+  }
+</script>

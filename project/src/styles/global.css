@@ -1,0 +1,432 @@
+@font-face {
+  font-family: "Ubuntu Mono Web";
+  src: url("/fonts/UbuntuMono-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+
+:root,
+:root[data-theme="blue"] {
+  color-scheme: light;
+  /* --rail-width：最左常驻竖条；--sidebar-width：目录栏（比原来窄一点） */
+  --rail-width: 40px;
+  --sidebar-width: 262px;
+  --background-primary: #f5f9fc;
+  --surface-primary: #fbfdff;
+  --surface-secondary: #edf5fb;
+  --surface-hover: #e2eef5;
+  --code-background: #e7f0f7;
+  --text-normal: #2d4353;
+  --text-muted: #6a7f8f;
+  --heading-color: #3c3f47;
+  --accent: #6598bb;
+  --accent-strong: #3f779e;
+  --sidebar-heading: #5186aa;
+  --border-color: #cfdfeb;
+  --border-strong: #9fbccc;
+  --graph-node: #487a9a;
+  --graph-line: #b5cad8;
+  --graph-glow: rgb(101 152 187 / 18%);
+  --graph-dot: #c3d7e4;
+  --home-center-glow: rgb(187 220 240 / 20%);
+  --home-corner-glow: rgb(174 210 232 / 10%);
+  --hero-halo: rgb(255 177 190 / 16%);
+  --hero-shadow: rgb(63 119 158 / 12%);
+  --shadow-color: rgb(59 92 115 / 8%);
+  --selection: #d5e8f5;
+  --syntax-comment: #648095;
+  --syntax-keyword: #8b3f78;
+  --syntax-string: #246f64;
+  --syntax-number: #a0522d;
+  --syntax-title: #2a5f9e;
+  --syntax-built-in: #8a5624;
+  --syntax-variable: #7d3f59;
+}
+
+:root[data-theme="pink"] {
+  color-scheme: light;
+  --background-primary: #fffbfc;
+  --surface-primary: #fffdfd;
+  --surface-secondary: #fdf1f6;
+  --surface-hover: #fae9f0;
+  --code-background: #f9edf2;
+  --text-normal: #59434b;
+  --text-muted: #8b717a;
+  --heading-color: #3c3f47;
+  --accent: #db8ba7;
+  --accent-strong: #ad5d7b;
+  --sidebar-heading: #c36f8e;
+  --border-color: #f0d6df;
+  --border-strong: #d9a9ba;
+  --graph-node: #af607d;
+  --graph-line: #dfb9c7;
+  --graph-glow: rgb(219 139 167 / 18%);
+  --graph-dot: #efd3dd;
+  --home-center-glow: rgb(250 211 225 / 22%);
+  --home-corner-glow: rgb(240 190 208 / 10%);
+  --hero-halo: rgb(255 164 184 / 18%);
+  --hero-shadow: rgb(173 93 123 / 10%);
+  --shadow-color: rgb(126 73 92 / 7%);
+  --selection: #fae0e9;
+  --syntax-comment: #896d77;
+  --syntax-keyword: #9f2f6d;
+  --syntax-string: #8a552b;
+  --syntax-number: #316d86;
+  --syntax-title: #8b3c91;
+  --syntax-built-in: #a24e42;
+  --syntax-variable: #7b4b6f;
+}
+
+:root[data-theme="white"] {
+  color-scheme: light;
+  --background-primary: #fefefe;
+  --surface-primary: #ffffff;
+  --surface-secondary: #f9f9f7;
+  --surface-hover: #f2f2ef;
+  --code-background: #f4f4f1;
+  --text-normal: #30302e;
+  --text-muted: #767672;
+  --heading-color: #3c3f47;
+  --accent: #92928d;
+  --accent-strong: #5b5b57;
+  --sidebar-heading: #6d6d68;
+  --border-color: #e5e5e1;
+  --border-strong: #bdbdb7;
+  --graph-node: #656560;
+  --graph-line: #cdcdc8;
+  --graph-glow: rgb(90 90 86 / 10%);
+  --graph-dot: #deded9;
+  --home-center-glow: rgb(235 235 230 / 28%);
+  --home-corner-glow: rgb(229 229 224 / 14%);
+  --hero-halo: rgb(255 185 195 / 14%);
+  --hero-shadow: rgb(0 0 0 / 8%);
+  --shadow-color: rgb(0 0 0 / 6%);
+  --selection: #e9e9e6;
+  --syntax-comment: #6f6f6f;
+  --syntax-keyword: #7c3878;
+  --syntax-string: #2f6e4f;
+  --syntax-number: #9b4a24;
+  --syntax-title: #315f9b;
+  --syntax-built-in: #7e5c1e;
+  --syntax-variable: #783f4e;
+}
+
+:root[data-theme="black"] {
+  color-scheme: dark;
+  --background-primary: #323336;
+  --surface-primary: #3a3b3f;
+  --surface-secondary: #2e2f33;
+  --surface-hover: #45464b;
+  --code-background: #2a2b2f;
+  --text-normal: #dedfe2;
+  --text-muted: #acadb1;
+  --heading-color: #ececef;
+  --accent: #b8b9bd;
+  --accent-strong: #ececef;
+  --sidebar-heading: #d0d1d4;
+  --border-color: #535459;
+  --border-strong: #83848b;
+  --graph-node: #f0f0f1;
+  --graph-line: #78797f;
+  --graph-glow: rgb(255 255 255 / 14%);
+  --graph-dot: #5b5c62;
+  --home-center-glow: rgb(79 90 96 / 20%);
+  --home-corner-glow: rgb(89 76 84 / 12%);
+  --hero-halo: rgb(255 147 170 / 12%);
+  --hero-shadow: rgb(0 0 0 / 30%);
+  --shadow-color: rgb(0 0 0 / 20%);
+  --selection: #55565a;
+  --syntax-comment: #858585;
+  --syntax-keyword: #dc8ac5;
+  --syntax-string: #83c6a3;
+  --syntax-number: #e1a06d;
+  --syntax-title: #84aee8;
+  --syntax-built-in: #dfc278;
+  --syntax-variable: #e29aaf;
+}
+
+:root[data-theme="yellow"] {
+  color-scheme: light;
+  --background-primary: #fefaf3;
+  --surface-primary: #fffdf6;
+  --surface-secondary: #fbf3e0;
+  --surface-hover: #f5edd1;
+  --code-background: #f6eed7;
+  --text-normal: #55492e;
+  --text-muted: #8a7c5c;
+  --heading-color: #3c3f47;
+  --accent: #cfa94e;
+  --accent-strong: #a3823a;
+  --sidebar-heading: #b3923f;
+  --border-color: #eadfc2;
+  --border-strong: #d3bf8f;
+  --graph-node: #a8863c;
+  --graph-line: #e0d1a6;
+  --graph-glow: rgb(207 169 78 / 18%);
+  --graph-dot: #ecdfba;
+  --home-center-glow: rgb(247 231 186 / 24%);
+  --home-corner-glow: rgb(240 220 164 / 12%);
+  --hero-halo: rgb(255 196 130 / 16%);
+  --hero-shadow: rgb(163 130 58 / 12%);
+  --shadow-color: rgb(122 100 48 / 8%);
+  --selection: #f5e8c4;
+  --syntax-comment: #8a7a58;
+  --syntax-keyword: #9c3f6e;
+  --syntax-string: #4a7042;
+  --syntax-number: #a0522d;
+  --syntax-title: #8a6a1f;
+  --syntax-built-in: #7e5c1e;
+  --syntax-variable: #7d4b3f;
+}
+
+:root[data-theme="green"] {
+  color-scheme: light;
+  --background-primary: #f6fbf7;
+  --surface-primary: #fcfffd;
+  --surface-secondary: #eaf5ec;
+  --surface-hover: #deeee2;
+  --code-background: #e6f1e9;
+  --text-normal: #3a5244;
+  --text-muted: #6f8676;
+  --heading-color: #3c3f47;
+  --accent: #7fb08d;
+  --accent-strong: #4f8460;
+  --sidebar-heading: #5f9270;
+  --border-color: #d2e5d6;
+  --border-strong: #9fbfa8;
+  --graph-node: #558a66;
+  --graph-line: #bed8c4;
+  --graph-glow: rgb(127 176 141 / 18%);
+  --graph-dot: #cfe3d4;
+  --home-center-glow: rgb(203 232 210 / 22%);
+  --home-corner-glow: rgb(190 224 198 / 12%);
+  --hero-halo: rgb(255 183 178 / 14%);
+  --hero-shadow: rgb(79 132 96 / 12%);
+  --shadow-color: rgb(58 92 68 / 8%);
+  --selection: #d9ecdd;
+  --syntax-comment: #6d8574;
+  --syntax-keyword: #8b3f78;
+  --syntax-string: #246f64;
+  --syntax-number: #a0522d;
+  --syntax-title: #2a5f9e;
+  --syntax-built-in: #8a5624;
+  --syntax-variable: #7d3f59;
+}
+
+:root[data-theme="purple"] {
+  color-scheme: light;
+  --background-primary: #fbf9fd;
+  --surface-primary: #fefcff;
+  --surface-secondary: #f4f0fa;
+  --surface-hover: #ece5f5;
+  --code-background: #f0ebf8;
+  --text-normal: #4a4059;
+  --text-muted: #7d7390;
+  --heading-color: #3c3f47;
+  --accent: #a48fce;
+  --accent-strong: #7360a8;
+  --sidebar-heading: #8a76bb;
+  --border-color: #e0d8ec;
+  --border-strong: #b9aacd;
+  --graph-node: #7c68ab;
+  --graph-line: #d4c8e4;
+  --graph-glow: rgb(164 143 206 / 18%);
+  --graph-dot: #ded3ec;
+  --home-center-glow: rgb(233 224 247 / 24%);
+  --home-corner-glow: rgb(222 208 240 / 12%);
+  --hero-halo: rgb(255 177 190 / 16%);
+  --hero-shadow: rgb(115 96 168 / 12%);
+  --shadow-color: rgb(90 74 120 / 8%);
+  --selection: #e6dcf5;
+  --syntax-comment: #7d7390;
+  --syntax-keyword: #9f2f6d;
+  --syntax-string: #2f6e4f;
+  --syntax-number: #9b4a24;
+  --syntax-title: #315f9b;
+  --syntax-built-in: #7e5c1e;
+  --syntax-variable: #783f4e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+html {
+  background: var(--background-primary);
+}
+
+body {
+  color: var(--text-normal);
+  background: var(--background-primary);
+  font-family: "LXGW WenKai Web", "Microsoft YaHei", system-ui, sans-serif;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+button,
+summary,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+/* 目录/文内锚点点击时平滑滚动到对应标题 */
+html {
+  scroll-behavior: smooth;
+}
+
+a {
+  color: var(--accent);
+}
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 竖条常驻最左，内容区域永远给它让出宽度；
+   目录栏展开时（桌面）内容再让出目录的宽度，手机上目录是浮层不多让 */
+.site-content {
+  min-height: 100vh;
+  margin-left: var(--rail-width);
+  width: calc(100% - var(--rail-width));
+  transition: margin-left 180ms ease, width 180ms ease;
+}
+
+html[data-sidebar="open"] .site-content {
+  margin-left: calc(var(--rail-width) + var(--sidebar-width));
+  width: calc(100% - var(--rail-width) - var(--sidebar-width));
+}
+
+@media (max-width: 760px) {
+  .site-content,
+  html[data-sidebar="open"] .site-content {
+    margin-left: var(--rail-width);
+    width: calc(100% - var(--rail-width));
+  }
+}
+
+/* ---------- 悬停小提示 ---------- */
+/* 给控件加 data-tip 即在右侧弹出小字；全宽元素加 .tip-up 改为上方弹出，
+   顶部控件加 .tip-down 改为下方弹出。延迟约 300ms 淡入，快速划过时不会闪；
+   显示约 2 秒后自动淡出——触屏上点按会让 :hover 一直挂着，不自动消失会挡内容。
+   所以整套提示只在支持悬停的设备（@media hover: hover）启用，手机上不显示。 */
+[data-tip] {
+  position: relative;
+}
+
+@media (hover: hover) {
+  [data-tip]:hover::after,
+  [data-tip]:focus-visible::after {
+    content: attr(data-tip);
+    position: absolute;
+    z-index: 90;
+    top: 50%;
+    left: calc(100% + 10px);
+    padding: 5px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-normal);
+    background: var(--surface-primary);
+    box-shadow: 0 6px 20px var(--shadow-color);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translateY(-50%);
+    animation: tip-fade 2600ms ease 300ms both;
+  }
+
+  @keyframes tip-fade {
+    0% {
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    78% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  [data-tip].tip-up::after {
+    top: auto;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  [data-tip].tip-down::after {
+    top: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  /* 靠右边缘的控件：往左弹 / 下方右对齐弹，避免小字伸出屏幕 */
+  [data-tip].tip-left::after {
+    left: auto;
+    right: calc(100% + 10px);
+  }
+
+  [data-tip].tip-down-end::after {
+    top: calc(100% + 8px);
+    left: auto;
+    right: -6px;
+    transform: none;
+  }
+
+  /* 靠左边缘的控件（如返回按钮）：往下弹且左对齐，
+     居中弹会被侧栏 overflow 裁掉，往右弹会盖住相邻控件 */
+  [data-tip].tip-down-start::after {
+    top: calc(100% + 8px);
+    left: 4px;
+    right: auto;
+    transform: none;
+  }
+
+  /* 减少动态效果时跳过淡入淡出：立即显示、移开即消失 */
+  @media (prefers-reduced-motion: reduce) {
+    [data-tip]:hover::after,
+    [data-tip]:focus-visible::after {
+      animation: none;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

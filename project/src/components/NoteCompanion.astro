@@ -1,0 +1,1418 @@
+---
+interface Props {
+  /** 页宠形象，默认是看电脑的小狗 */
+  image?: string;
+}
+
+const { image = "/media/notes/11-computer.gif" } = Astro.props;
+---
+
+<div class="note-companion">
+  <p id="companion-bubble" class="companion-bubble" role="status" aria-live="polite" hidden></p>
+  <div id="companion-menu" class="companion-menu" role="menu" aria-label="页宠选项" hidden>
+    <button id="companion-chat-option" class="companion-menu-item" type="button" role="menuitem">和我聊聊</button>
+    <a class="companion-menu-item" role="menuitem" href="/notes/碎碎念/投喂">投喂</a>
+    <button id="companion-hide" class="companion-menu-item" type="button" role="menuitem">隐藏</button>
+  </div>
+  <section id="companion-chat" class="companion-chat" role="dialog" aria-label="和小狗聊天" hidden>
+    <header id="chat-drag-handle" class="chat-header">
+      <a
+        id="chat-help"
+        class="chat-icon-btn"
+        href="/notes/FAQ/1.1%20常见问题"
+        aria-label="常见问题说明"
+        data-tip="常见问题"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M9.4 9.4a2.7 2.7 0 1 1 3.9 2.4c-.9.5-1.3 1-1.3 2"></path>
+          <circle cx="12" cy="16.8" r="0.7" fill="currentColor" stroke="none"></circle>
+        </svg>
+      </a>
+      <button
+        id="chat-clear"
+        class="chat-icon-btn"
+        type="button"
+        aria-label="清空聊天记录"
+        data-tip="清空聊天记录"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M8.7 9h6.6M10.2 9V7.7h3.6V9M9.7 9l.5 5.5h3.6L14.3 9"></path>
+        </svg>
+      </button>
+      <button id="chat-close" class="chat-close" type="button" aria-label="关闭聊天">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M1 1l10 10M11 1L1 11"></path>
+        </svg>
+      </button>
+    </header>
+    <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+    <form id="chat-form" class="chat-form">
+      <input
+        id="chat-input"
+        class="chat-input"
+        type="text"
+        maxlength="200"
+        placeholder="聊点什么"
+        autocomplete="off"
+        enterkeyhint="send"
+        aria-label="聊天内容"
+      />
+      <button type="submit" class="chat-send">发送</button>
+    </form>
+    <p id="chat-quota" class="chat-quota" hidden></p>
+    <p class="chat-disclaimer">内容由AI生成，仅供娱乐</p>
+  </section>
+  <button
+    id="companion-button"
+    class="companion-button"
+    type="button"
+    aria-label="和小狗说话"
+  >
+    <img src={image} alt="" width="480" height="480" draggable="false" />
+  </button>
+  <button
+    id="companion-fab"
+    class="companion-fab"
+    type="button"
+    aria-label="页宠菜单"
+    aria-haspopup="menu"
+    aria-expanded="false"
+  >
+    <span class="paw" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <ellipse cx="5.6" cy="10.2" rx="2.1" ry="2.7"></ellipse>
+        <ellipse cx="18.4" cy="10.2" rx="2.1" ry="2.7"></ellipse>
+        <ellipse cx="9.4" cy="6.4" rx="2.2" ry="2.9"></ellipse>
+        <ellipse cx="14.6" cy="6.4" rx="2.2" ry="2.9"></ellipse>
+        <path
+          d="M12 10.4c-3.9 0-6.6 2.8-6.6 5.9 0 1.9 1.5 3.3 3.4 3.3h6.4c1.9 0 3.4-1.4 3.4-3.3 0-3.1-2.7-5.9-6.6-5.9z"></path>
+      </svg>
+    </span>
+  </button>
+</div>
+
+<script>
+  // 页宠人设（台词、聊天规则）都在 src/data/personas/dog-study.json 里，改它就行
+  import persona from "../data/personas/dog-study.json";
+
+  const companion = document.querySelector<HTMLDivElement>(".note-companion");
+  const button = document.querySelector<HTMLButtonElement>("#companion-button");
+  const bubble = document.querySelector<HTMLParagraphElement>("#companion-bubble");
+  const fab = document.querySelector<HTMLButtonElement>("#companion-fab");
+  const menu = document.querySelector<HTMLDivElement>("#companion-menu");
+  const hideOption = document.querySelector<HTMLButtonElement>("#companion-hide");
+  const chatPanel = document.querySelector<HTMLElement>("#companion-chat");
+  const chatMessages = document.querySelector<HTMLDivElement>("#chat-messages");
+  const chatForm = document.querySelector<HTMLFormElement>("#chat-form");
+  const chatInput = document.querySelector<HTMLInputElement>("#chat-input");
+  const chatClose = document.querySelector<HTMLButtonElement>("#chat-close");
+  const chatOption = document.querySelector<HTMLButtonElement>("#companion-chat-option");
+  const chatHeader = document.querySelector<HTMLElement>("#chat-drag-handle");
+  const chatQuota = document.querySelector<HTMLParagraphElement>("#chat-quota");
+  const chatClear = document.querySelector<HTMLButtonElement>("#chat-clear");
+
+  if (
+    companion &&
+    button &&
+    bubble &&
+    fab &&
+    menu &&
+    hideOption &&
+    chatPanel &&
+    chatMessages &&
+    chatForm &&
+    chatInput &&
+    chatClose &&
+    chatOption &&
+    chatHeader &&
+    chatQuota &&
+    chatClear
+  ) {
+    const DRAG_THRESHOLD = 6; // 位移超过这个像素才算拖动，否则仍按点击处理
+    const HIDDEN_STORAGE_KEY = "companion-hidden";
+
+    let hideTimer: number | undefined;
+    let returnTimer: number | undefined;
+    let menuTimer: number | undefined;
+    let previousIndex = -1;
+    let pointerId: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let grabOffsetX = 0;
+    let grabOffsetY = 0;
+    let dragWidth = 0;
+    let dragHeight = 0;
+    let dragMoved = false;  // 本次按下是否真的拖动了（用来拦下松手时紧跟的 click）
+    let positioned = false; // 是否已把定位从 right/bottom 换成 left/top
+
+    // ---------- 活动范围：不出屏幕，也不压到目录栏上 ----------
+    const isPetHidden = () => companion.classList.contains("is-hidden");
+
+    const sidebarEdge = () => {
+      const sidebar = document.querySelector<HTMLElement>("#note-sidebar");
+      // 最左常驻侧边栏占 40px，页宠活动范围至少从它右侧开始
+      if (!sidebar || document.documentElement.dataset.sidebar === "closed") return 40;
+      const right = sidebar.getBoundingClientRect().right;
+      return right > 40 ? right : 40;
+    };
+
+    // 小圆气泡悬出小狗右上角 6px：页宠的右界和上界以它的外沿为准，
+    // 否则贴边时小圆气泡会被屏幕裁掉一条。隐藏时小圆气泡就是全部，无外沿。
+    const FAB_STICK_OUT = 6;
+
+    // 边界用 clientWidth/clientHeight：不含滚动条，且 fixed 定位正是按这片区域摆放；
+    // 用 innerWidth 会把滚动条那一条也算进去，贴边时页宠会被滚动条盖住。
+    const clampX = (x: number, width: number) => {
+      const maxX = document.documentElement.clientWidth - width - (isPetHidden() ? 0 : FAB_STICK_OUT);
+      return Math.max(Math.min(sidebarEdge(), maxX), Math.min(x, maxX));
+    };
+
+    const clampY = (y: number, height: number) =>
+      Math.max(
+        isPetHidden() ? 0 : FAB_STICK_OUT,
+        Math.min(y, document.documentElement.clientHeight - height),
+      );
+
+    // ---------- 气泡：点小狗时冒一句，优先问 AI（服务器接口），失败回落本地台词 ----------
+    // 本地备用台词带一点上下文：时间段 + 当前笔记标题
+    const localIdleLine = () => {
+      const hour = new Date().getHours();
+      const title = document.querySelector(".note-title")?.textContent?.trim();
+      const pool: string[] = [];
+      if (hour >= 23 || hour < 6) pool.push("这么晚还在看笔记呀，注意休息");
+      else if (hour < 11) pool.push("一早就开始学习啦？勤快");
+      else if (hour >= 18) pool.push("晚上也来复习呀，加油");
+      if (title) pool.push(`在看《${title}》呀，认真点哦`);
+      pool.push(...persona.idleLines);
+      let index = Math.floor(Math.random() * pool.length);
+      if (index === previousIndex) index = (index + 1) % pool.length;
+      previousIndex = index;
+      return pool[index];
+    };
+
+    // 空闲搭话也在服务器端计入每小时额度，请求进行中就先不接新的点击
+    let idleBusy = false;
+    let lastIdleBubbleAt = 0;
+    const showMessage = () => {
+      const rect = companion.getBoundingClientRect();
+      companion.classList.toggle("is-flipped", rect.left + rect.width / 2 < window.innerWidth / 2);
+      button.classList.remove("is-shaking");
+      void button.offsetWidth;
+      button.classList.add("is-shaking");
+      // 两句气泡间隔至少 3 秒：之间的点击只摇一摇，不耗 token
+      const now = Date.now();
+      if (idleBusy || now - lastIdleBubbleAt < 3000) return;
+      lastIdleBubbleAt = now;
+      bubble.textContent = "…";
+      bubble.hidden = false;
+      if (hideTimer !== undefined) window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => {
+        bubble.hidden = true;
+        hideTimer = undefined;
+      }, 8000);
+      idleBusy = true;
+      void (async () => {
+        let line: string | null = null;
+        try {
+          line = await askIdle();
+        } catch {
+          line = null;
+        }
+        // 被限流或 AI 失败都说固定台词，但 3 秒间隔照样生效
+        if (!line) line = localIdleLine();
+        bubble.textContent = line;
+        if (hideTimer !== undefined) window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+          bubble.hidden = true;
+          hideTimer = undefined;
+        }, 3000);
+        idleBusy = false;
+      })();
+    };
+
+    const dismissBubble = () => {
+      if (hideTimer !== undefined) {
+        window.clearTimeout(hideTimer);
+        hideTimer = undefined;
+      }
+      bubble.hidden = true;
+    };
+
+    // ---------- 小圆气泡菜单与隐藏 ----------
+    const setMenuOpen = (open: boolean) => {
+      menu.hidden = !open;
+      fab.setAttribute("aria-expanded", String(open));
+      window.clearTimeout(menuTimer);
+      if (open) {
+        // 页宠靠屏幕上沿时菜单往下弹，避免被顶边裁掉
+        companion.classList.toggle("menu-below", companion.getBoundingClientRect().top < 180);
+        // 菜单打开 5 秒后自动收起
+        menuTimer = window.setTimeout(() => setMenuOpen(false), 5000);
+      }
+    };
+
+    const setPetHidden = (hidden: boolean) => {
+      if (hidden && positioned) {
+        // 把容器锚点挪到小圆气泡处：隐藏后它停在原地，
+        // 再次点击时小狗也从这个位置原地展开
+        const fabRect = fab.getBoundingClientRect();
+        companion.style.left = `${fabRect.left}px`;
+        companion.style.top = `${fabRect.top}px`;
+      }
+      companion.classList.toggle("is-hidden", hidden);
+      localStorage.setItem(HIDDEN_STORAGE_KEY, String(hidden));
+      dismissBubble();
+      setMenuOpen(false);
+      if (hidden) {
+        window.clearTimeout(returnTimer);
+      } else {
+        enforceBounds(false); // 小狗比小圆气泡大，显示后确认整体都在允许范围内
+      }
+    };
+
+    // 上次离开前隐藏了页宠，这次也只显示小圆气泡
+    if (localStorage.getItem(HIDDEN_STORAGE_KEY) === "true") {
+      companion.classList.add("is-hidden");
+    }
+
+    // ---------- 拖动结束 5 秒后，缓慢挪到更近的那一侧边缘 ----------
+    // 页面在后台/面板折叠时视口可能是 0，此时算出的边界没有意义，
+    // 推迟 1 秒重试，等视口恢复（恢复时也会有 resize 兜底校正）。
+    const viewportIsUsable = () =>
+      document.visibilityState === "visible" && window.innerWidth > 40;
+
+    const glideToEdge = () => {
+      if (!positioned || !viewportIsUsable()) return;
+      if (!viewportIsUsable()) {
+        returnTimer = window.setTimeout(glideToEdge, 1000);
+        return;
+      }
+      const rect = companion.getBoundingClientRect();
+      const leftTarget = clampX(sidebarEdge(), rect.width);
+      const rightTarget = clampX(
+        document.documentElement.clientWidth - rect.width,
+        rect.width,
+      );
+      const targetX = rect.left - leftTarget <= rightTarget - rect.left ? leftTarget : rightTarget;
+      companion.classList.add("is-gliding");
+      companion.style.left = `${targetX}px`;
+      companion.style.top = `${clampY(rect.top, rect.height)}px`;
+    };
+
+    const scheduleReturn = () => {
+      window.clearTimeout(returnTimer);
+      returnTimer = window.setTimeout(glideToEdge, 5_000);
+    };
+
+    // 抓住页宠时把回边动画冻结在当前位置：只摘 is-gliding 会瞬间跳到目标点，
+    // 必须把当前视觉位置写成内联值再摘，鼠标拖到哪就跟到哪。
+    const stopGlideInPlace = () => {
+      if (!companion.classList.contains("is-gliding")) return;
+      const rect = companion.getBoundingClientRect();
+      companion.classList.remove("is-gliding");
+      companion.style.left = `${rect.left}px`;
+      companion.style.top = `${rect.top}px`;
+    };
+
+    // ---------- 拖动：小狗和小圆气泡共用同一套手感 ----------
+    // 显示时抓小圆气泡等于抓整个页宠；隐藏时容器就是小圆气泡本身，
+    // 所以两者用同一组开始/移动/结束逻辑即可，移动距离、边界、回边完全一致。
+    const beginDrag = (source: HTMLButtonElement) => (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      window.clearTimeout(returnTimer);
+      stopGlideInPlace(); // 不摘掉回边缓动，拖动就会慢慢悠悠跟不上鼠标
+      dismissBubble();    // 拖动时收起气泡，页宠的位置计算只看小狗本身
+      const rect = companion.getBoundingClientRect();
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      grabOffsetX = event.clientX - rect.left;
+      grabOffsetY = event.clientY - rect.top;
+      dragWidth = rect.width;
+      dragHeight = rect.height;
+      dragMoved = false;
+      try {
+        source.setPointerCapture(event.pointerId);
+      } catch {
+        // 指针在捕获前已失效（极少见），松开前的拖动会失效，但不影响点击
+      }
+    };
+
+    const moveDrag = (event: PointerEvent) => {
+      if (pointerId !== event.pointerId) return;
+      if (!dragMoved) {
+        if (Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD) return;
+        dragMoved = true;
+        companion.classList.add("is-dragging");
+        if (!positioned) {
+          positioned = true;
+          companion.style.right = "auto";
+          companion.style.bottom = "auto";
+        }
+      }
+      companion.style.left = `${clampX(event.clientX - grabOffsetX, dragWidth)}px`;
+      companion.style.top = `${clampY(event.clientY - grabOffsetY, dragHeight)}px`;
+    };
+
+    const endDrag = (event: PointerEvent) => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      companion.classList.remove("is-dragging");
+      if (dragMoved) scheduleReturn(); // 拖完 5 秒自动回到边上
+    };
+
+    button.addEventListener("pointerdown", beginDrag(button));
+    fab.addEventListener("pointerdown", beginDrag(fab));
+    button.addEventListener("pointermove", moveDrag);
+    fab.addEventListener("pointermove", moveDrag);
+    button.addEventListener("pointerup", endDrag);
+    button.addEventListener("pointercancel", endDrag);
+    fab.addEventListener("pointerup", endDrag);
+    fab.addEventListener("pointercancel", endDrag);
+
+    button.addEventListener("click", () => {
+      if (dragMoved) {
+        dragMoved = false; // 拖完松手产生的 click 不算说话
+        return;
+      }
+      showMessage();
+      stopGlideInPlace(); // 键盘回车触发时没有 pointerdown，这里兜底停住回边动画
+      if (positioned) scheduleReturn(); // 点小狗也算交互：重新计 5 秒
+    });
+    button.addEventListener("animationend", () => button.classList.remove("is-shaking"));
+
+    fab.addEventListener("click", () => {
+      if (dragMoved) {
+        dragMoved = false; // 拖完小圆气泡松手产生的 click 不算「显示」
+        return;
+      }
+      // 点小圆气泡也是交互：显示小狗或开关菜单，都重新计 5 秒
+      stopGlideInPlace();
+      if (positioned) scheduleReturn();
+      // 隐藏状态下小圆气泡本身承担「显示」
+      if (isPetHidden()) {
+        setPetHidden(false);
+        return;
+      }
+      // hidden 为 true（菜单关着）时点击 → 打开
+      setMenuOpen(Boolean(menu.hidden));
+    });
+
+    hideOption.addEventListener("click", () => setPetHidden(true));
+
+    // ---------- 和我聊聊：本地规则引擎，不花钱、零延迟 ----------
+    // 从同一个台词池连续抽两遍不重复
+    const lastPick = new Map<string[], number>();
+    const pickFrom = (pool: string[]): string => {
+      let index = Math.floor(Math.random() * pool.length);
+      if (pool.length > 1 && index === lastPick.get(pool)) index = (index + 1) % pool.length;
+      lastPick.set(pool, index);
+      return pool[index];
+    };
+
+    interface NoteHit {
+      title: string;
+      id: string;
+      url: string;
+    }
+    interface DogReply {
+      text: string;
+      notes?: NoteHit[];
+    }
+
+    // 笔记索引按需拉一次：build 时生成的 graph.json 里有全部笔记的标题和链接
+    let noteIndex: NoteHit[] | null = null;
+    const loadNoteIndex = async (): Promise<NoteHit[]> => {
+      if (noteIndex) return noteIndex;
+      let loaded: NoteHit[] = [];
+      try {
+        const res = await fetch("/generated/graph.json");
+        const graph = await res.json();
+        loaded = (Array.isArray(graph?.nodes) ? graph.nodes : [])
+          .map((node: { id?: string; title?: string; url?: string }) => ({
+            title: node.title ?? node.id ?? "",
+            id: node.id ?? "",
+            url: node.url ?? "",
+          }))
+          .filter((hit: NoteHit) => hit.title && hit.url);
+      } catch {
+        loaded = []; // 拉不到就当作站内没笔记，聊天照常
+      }
+      noteIndex = loaded;
+      return loaded;
+    };
+
+    // 去掉引导词后，剩下的整句、分词，以及中文的两字组合都算关键词
+    // （中文没空格分词，"linux权限" 靠 "权限" 这层二元组合也能命中）
+    const keywordsOf = (text: string): string[] => {
+      let rest = text.toLowerCase();
+      for (const trigger of persona.noteTriggers) rest = rest.split(trigger).join(" ");
+      const words = rest.split(/[^\p{L}\p{N}]+/u).filter((word) => word.length >= 2);
+      const tokens = new Set(words);
+      for (const word of words) {
+        if (/^\p{Script=Han}+$/u.test(word)) {
+          for (let i = 0; i + 2 <= word.length; i++) tokens.add(word.slice(i, i + 2));
+        }
+      }
+      return [...tokens];
+    };
+
+    const searchNotes = async (text: string): Promise<NoteHit[]> => {
+      const nodes = await loadNoteIndex();
+      const tokens = keywordsOf(text);
+      if (!nodes.length || !tokens.length) return [];
+      return nodes
+        .map((node) => {
+          const haystack = `${node.title} ${node.id}`.toLowerCase();
+          return {
+            node,
+            score: tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0),
+          };
+        })
+        .filter((item) => item.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map((item) => item.node);
+    };
+
+    const thinkReply = async (raw: string): Promise<DogReply> => {
+      const text = raw.trim();
+      for (const rule of persona.rules) {
+        const lowered = text.toLowerCase();
+        if (rule.match.some((keyword) => lowered.includes(keyword.toLowerCase()))) {
+          return { text: pickFrom(rule.reply) };
+        }
+      }
+      if (persona.noteTriggers.some((trigger) => text.includes(trigger))) {
+        const hits = await searchNotes(text);
+        if (hits.length) return { text: pickFrom(persona.noteFound), notes: hits };
+        return { text: pickFrom(persona.noteMiss) };
+      }
+      const hour = new Date().getHours();
+      if ((hour >= 23 || hour < 6) && Math.random() < 0.6) {
+        return { text: pickFrom(persona.nightFallbacks) };
+      }
+      return { text: pickFrom(persona.fallbacks) };
+    };
+
+    // ---------- AI 聊天：优先走服务器接口，失败回落到本地规则 ----------
+    // 会话记录存 localStorage（访客自己电脑上），刷新/换笔记都不丢；
+    // 只保留最近 50 条防止膨胀；AI 上下文只带最近 6 条（服务器端还会再裁）
+    const CHAT_STORAGE_KEY = "companion-chat-history";
+    const CHAT_HISTORY_KEEP = 200;
+    const CHAT_HISTORY_SENT = 6;
+    type StoredMsg = { role: "user" | "assistant"; content: string };
+
+    const chatHistory: StoredMsg[] = (() => {
+      try {
+        const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+        const arr: unknown = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr)) return [];
+        const valid = (m: unknown): m is StoredMsg => {
+          if (!m || typeof m !== "object") return false;
+          const role = (m as { role?: unknown }).role;
+          const content = (m as { content?: unknown }).content;
+          return (role === "user" || role === "assistant") && typeof content === "string" && content.trim() !== "";
+        };
+        return (arr as unknown[]).filter(valid).slice(-CHAT_HISTORY_KEEP);
+      } catch {
+        return [];
+      }
+    })();
+
+    const remember = (role: "user" | "assistant", content: string) => {
+      chatHistory.push({ role, content });
+      if (chatHistory.length > CHAT_HISTORY_KEEP) {
+        chatHistory.splice(0, chatHistory.length - CHAT_HISTORY_KEEP);
+      }
+      try {
+        localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(chatHistory));
+      } catch {
+        // 存储不可用（隐私模式等）就只留在内存，不影响本次聊天
+      }
+    };
+
+    const askAI = async (
+      text: string,
+    ): Promise<string | { error: string; kind?: string; retryAfter?: number } | null> => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 15_000);
+      try {
+        const res = await fetch("/api/chat.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history: chatHistory.slice(-CHAT_HISTORY_SENT) }),
+          signal: controller.signal,
+        });
+        const data = (await res.json().catch(() => null)) as
+          | { reply?: unknown; error?: unknown; kind?: unknown; retryAfter?: unknown }
+          | null;
+        if (res.status === 429 && data && typeof data.error === "string") {
+          return {
+            error: data.error, // 限流提示按原文展示，不回落
+            kind: typeof data.kind === "string" ? data.kind : undefined,
+            retryAfter: typeof data.retryAfter === "number" ? data.retryAfter : undefined,
+          };
+        }
+        if (!res.ok || !data || typeof data.reply !== "string" || !data.reply.trim()) {
+          return null; // 其余失败一律回落到本地规则
+        }
+        return data.reply.trim();
+      } catch {
+        return null;
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
+    // 点小狗的搭话也走 AI；限流/故障一律静默回落，不打扰人
+    const askIdle = async (): Promise<string | null> => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 15_000);
+      try {
+        const page = document.querySelector(".note-title")?.textContent?.trim() ?? "";
+        const res = await fetch("/api/chat.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "idle", page: page.slice(0, 60) }),
+          signal: controller.signal,
+        });
+        if (!res.ok) return null;
+        const data = (await res.json().catch(() => null)) as { reply?: unknown } | null;
+        if (!data || typeof data.reply !== "string" || !data.reply.trim()) return null;
+        return data.reply.trim();
+      } catch {
+        return null;
+      } finally {
+        window.clearTimeout(timer);
+      }
+    };
+
+    // ---------- 聊天框：消息渲染 ----------
+    const scrollChatToEnd = () => {
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    };
+
+    const makeDogRow = () => {
+      const row = document.createElement("div");
+      row.className = "chat-msg chat-msg-dog";
+      const avatar = document.createElement("img");
+      avatar.className = "chat-avatar";
+      avatar.src = persona.avatar;
+      avatar.alt = "";
+      avatar.width = 34;
+      avatar.height = 34;
+      avatar.draggable = false;
+      const dogBubble = document.createElement("div");
+      dogBubble.className = "chat-bubble";
+      row.append(avatar, dogBubble);
+      return { row, dogBubble };
+    };
+
+    const appendDogReply = (reply: DogReply) => {
+      const { row, dogBubble } = makeDogRow();
+      dogBubble.append(document.createTextNode(reply.text));
+      if (reply.notes?.length) {
+        const links = document.createElement("span");
+        links.className = "chat-note-links";
+        reply.notes.forEach((hit, i) => {
+          if (i > 0) links.append(document.createTextNode("、"));
+          const link = document.createElement("a");
+          link.href = hit.url;
+          link.textContent = hit.title;
+          links.append(link);
+        });
+        dogBubble.append(document.createElement("br"), links);
+      }
+      chatMessages.append(row);
+      scrollChatToEnd();
+    };
+
+    const appendUserMessage = (text: string) => {
+      const row = document.createElement("div");
+      row.className = "chat-msg chat-msg-user";
+      const userBubble = document.createElement("div");
+      userBubble.className = "chat-bubble";
+      userBubble.textContent = text;
+      row.append(userBubble);
+      chatMessages.append(row);
+      scrollChatToEnd();
+    };
+
+    const showTyping = () => {
+      const { row, dogBubble } = makeDogRow();
+      dogBubble.classList.add("is-typing");
+      for (let i = 0; i < 3; i++) {
+        const dot = document.createElement("span");
+        dot.className = "chat-dot";
+        dogBubble.append(dot);
+      }
+      chatMessages.append(row);
+      scrollChatToEnd();
+      return row;
+    };
+
+    let chatOpen = false;
+    let chatBusy = false;
+    let chatGreeted = false;
+    let chatPointerId: number | null = null;
+    let chatGrabX = 0;
+    let chatGrabY = 0;
+    let chatWidth = 0;
+    let chatHeight = 0;
+
+    // 每日上限后常驻灰字提示，告诉访客多久恢复
+    const formatDuration = (seconds: number) => {
+      if (seconds >= 3600) return `${Math.ceil(seconds / 3600)} 小时`;
+      if (seconds >= 60) return `${Math.ceil(seconds / 60)} 分钟`;
+      return `${Math.max(1, Math.round(seconds))} 秒`;
+    };
+
+    const sendCurrent = () => {
+      const text = chatInput.value.trim();
+      if (!text || chatBusy) return;
+      chatInput.value = "";
+      appendUserMessage(text);
+      remember("user", text);
+      chatBusy = true;
+      const typingRow = showTyping();
+      const startedAt = Date.now();
+      void (async () => {
+        const aiReply = await askAI(text);
+        let reply: DogReply;
+        if (typeof aiReply === "string") {
+          reply = { text: aiReply };
+          chatQuota.hidden = true; // 能正常聊了就撤掉上限提示
+        } else if (aiReply && typeof aiReply.error === "string") {
+          reply = { text: aiReply.error };
+          if (aiReply.kind === "hour" && aiReply.retryAfter) {
+            chatQuota.textContent = `本小时会话已达上限，约 ${formatDuration(aiReply.retryAfter)}后恢复`;
+            chatQuota.hidden = false;
+          }
+        } else {
+          reply = await thinkReply(text); // AI 不可用，本地台词兜底
+        }
+        remember("assistant", reply.text);
+        // 本地兜底回得太快不像话；AI 回复本身就慢，这里自然为 0
+        const wait = Math.max(0, 550 + Math.random() * 450 - (Date.now() - startedAt));
+        window.setTimeout(() => {
+          typingRow.remove();
+          appendDogReply(reply);
+          chatBusy = false;
+          if (chatOpen && window.matchMedia("(pointer: fine)").matches) chatInput.focus();
+        }, wait);
+      })();
+    };
+    chatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      sendCurrent();
+    });
+    // 有的输入法/环境里回车不触发表单隐式提交，这里显式兜一层
+    chatInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.isComposing) return;
+      event.preventDefault();
+      sendCurrent();
+    });
+
+    // ---------- 聊天框拖动：抓标题栏，叉不参与拖 ----------
+    const clampChat = (x: number, y: number) => ({
+      x: Math.max(8, Math.min(x, document.documentElement.clientWidth - chatWidth - 8)),
+      y: Math.max(8, Math.min(y, document.documentElement.clientHeight - chatHeight - 8)),
+    });
+    const placeChatAt = (x: number, y: number) => {
+      const pos = clampChat(x, y);
+      chatPanel.classList.add("is-dragged"); // 有内联坐标后默认的 right/bottom 失效
+      chatPanel.style.left = `${pos.x}px`;
+      chatPanel.style.top = `${pos.y}px`;
+    };
+
+    chatHeader.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      if (event.target instanceof Element && event.target.closest(".chat-close")) return;
+      const rect = chatPanel.getBoundingClientRect();
+      chatPointerId = event.pointerId;
+      chatGrabX = event.clientX - rect.left;
+      chatGrabY = event.clientY - rect.top;
+      chatWidth = rect.width;
+      chatHeight = rect.height;
+      try {
+        chatHeader.setPointerCapture(event.pointerId);
+      } catch {
+        // 同页宠：指针在捕获前已失效，拖不动但不影响点击
+      }
+    });
+    chatHeader.addEventListener("pointermove", (event) => {
+      if (chatPointerId !== event.pointerId) return;
+      placeChatAt(event.clientX - chatGrabX, event.clientY - chatGrabY);
+    });
+    const endChatDrag = (event: PointerEvent) => {
+      if (chatPointerId !== event.pointerId) return;
+      chatPointerId = null;
+    };
+    chatHeader.addEventListener("pointerup", endChatDrag);
+    chatHeader.addEventListener("pointercancel", endChatDrag);
+
+    window.addEventListener("resize", () => {
+      // 没拖过就交给 CSS 的 right/bottom 自己适应；拖过才需要拉回屏幕里
+      if (!chatOpen || chatPointerId !== null || !chatPanel.classList.contains("is-dragged")) return;
+      if (!viewportIsUsable()) return;
+      const rect = chatPanel.getBoundingClientRect();
+      placeChatAt(rect.left, rect.top);
+    });
+
+    // ---------- 开关聊天框：开着时页宠本体先躲起来 ----------
+    const setChatOpen = (open: boolean) => {
+      if (open === chatOpen) return;
+      chatOpen = open;
+      chatPanel.hidden = !open;
+      setMenuOpen(false);
+      if (open) {
+        companion.classList.add("is-chatting");
+        window.clearTimeout(returnTimer);
+        dismissBubble();
+        // 上次的聊天记录从 localStorage 恢复到界面上
+        chatMessages.replaceChildren();
+        for (const m of chatHistory) {
+          if (m.role === "user") appendUserMessage(m.content);
+          else appendDogReply({ text: m.content });
+        }
+        scrollChatToEnd();
+        if (!chatGreeted) {
+          chatGreeted = true;
+          window.setTimeout(() => {
+            // 只有空记录（第一次来）才问候；访客抢答了也不补
+            if (chatHistory.length === 0) appendDogReply({ text: pickFrom(persona.greeting) });
+          }, 450);
+        }
+        chatInput.focus();
+      } else {
+        companion.classList.remove("is-chatting");
+        enforceBounds(false);
+      }
+    };
+
+    chatOption.addEventListener("click", () => setChatOpen(true));
+    chatClose.addEventListener("click", () => setChatOpen(false));
+
+    // 清空聊天记录：内存和 localStorage 一起清，界面重新打招呼
+    const clearChatHistory = () => {
+      chatHistory.length = 0;
+      try {
+        localStorage.removeItem(CHAT_STORAGE_KEY);
+      } catch {
+        // 存储不可用就只清内存这份
+      }
+      chatMessages.replaceChildren();
+      chatQuota.hidden = true;
+      appendDogReply({ text: pickFrom(persona.greeting) });
+      scrollChatToEnd();
+    };
+    chatClear.addEventListener("click", () => clearChatHistory());
+
+    document.addEventListener("click", (event) => {
+      if (menu.hidden) return;
+      if (event.target instanceof Node && companion.contains(event.target)) return;
+      setMenuOpen(false);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (chatOpen) {
+        setChatOpen(false);
+        return;
+      }
+      if (!menu.hidden) setMenuOpen(false);
+    });
+
+
+    // ---------- 窗口尺寸或目录栏开合变化后，把页宠拉回允许范围内 ----------
+    const enforceBounds = (smooth: boolean) => {
+      if (!positioned || !viewportIsUsable()) return;
+      const rect = companion.getBoundingClientRect();
+      const x = clampX(rect.left, rect.width);
+      const y = clampY(rect.top, rect.height);
+      if (x === rect.left && y === rect.top) return;
+      companion.classList.toggle("is-gliding", smooth);
+      companion.style.left = `${x}px`;
+      companion.style.top = `${y}px`;
+    };
+
+    window.addEventListener("resize", () => enforceBounds(false));
+    window.addEventListener("layoutchange", () => {
+      // 目录栏收展有 180ms 动画，等它走完再按最终边界收窄活动范围
+      window.setTimeout(() => enforceBounds(true), 220);
+    });
+    // 再盯住 data-sidebar 属性本身：即使哪天侧边栏忘了派 layoutchange，
+    // 展开目录栏时也能把压在底下的页宠拉回到目录栏边上
+    new MutationObserver(() => {
+      window.setTimeout(() => enforceBounds(true), 220);
+    }).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-sidebar"],
+    });
+  }
+</script>
+
+<style>
+  .note-companion {
+    position: fixed;
+    z-index: 20;
+    right: 18px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .companion-button {
+    display: block;
+    width: 80px;
+    height: 80px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  /* 隐藏后页面只剩小圆气泡：容器收成它的大小，拖动和边界计算直接复用；
+     setPetHidden 会先把容器锚点挪到小圆气泡处，显示时小狗原地回来 */
+  .note-companion.is-hidden {
+    width: 24px;
+    height: 24px;
+  }
+
+  .note-companion.is-hidden .companion-button {
+    display: none;
+  }
+
+  .note-companion.is-hidden .companion-fab {
+    position: static;
+  }
+
+  .note-companion.is-dragging .companion-button,
+  .note-companion.is-dragging .companion-fab {
+    cursor: grabbing;
+  }
+
+  .companion-button img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 5px 9px var(--hero-shadow));
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  .companion-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 50%;
+  }
+
+  .companion-button.is-shaking {
+    animation: companion-shake 450ms ease-in-out;
+  }
+
+  /* 「is-gliding」只加在自动回边、边界修正这类非手势移动上，
+     拖动跟手时必须去掉，否则会跟不上指针。 */
+  .note-companion.is-gliding {
+    transition: left 1.6s ease-in-out, top 1.6s ease-in-out;
+  }
+
+  /* 气泡绝对定位在容器外侧，容器尺寸始终等于小狗本身，
+     拖动/回边的位置计算才不会受文字长短影响。 */
+  .companion-bubble {
+    position: absolute;
+    bottom: 38px;
+    right: calc(100% + 5px);
+    /* 绝对定位的收缩适配在可用空间为负时会把气泡挤成细条，
+       显式按内容取宽（上限仍由 max-width 管）。 */
+    width: max-content;
+    max-width: min(220px, calc(100vw - 130px));
+    padding: 9px 13px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px 14px 3px 14px;
+    color: var(--text-normal);
+    background: var(--surface-primary);
+    box-shadow:
+      0 0 0 2px var(--surface-primary),
+      0 6px 20px var(--shadow-color);
+    font-size: 14px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .note-companion.is-flipped .companion-bubble {
+    right: auto;
+    left: calc(100% + 5px);
+    border-radius: 14px 14px 14px 3px;
+  }
+
+  .companion-bubble[hidden] {
+    display: none;
+  }
+
+  /* 跟随页宠的小圆气泡：菜单入口。绝对定位挂在小狗右上角，
+     页宠去哪它跟到哪；::after 留给了全局 data-tip 提示。
+     配色固定不随主题：小鸡黄底 + 深棕爪印，浅色/深色主题下都醒目。 */
+  .companion-fab {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    display: grid;
+    place-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid #c9a227;
+    border-radius: 50%;
+    color: #6a5212;
+    background: #f6d870;
+    box-shadow:
+      0 0 0 2px rgb(0 0 0 / 12%),
+      0 2px 8px rgb(0 0 0 / 16%);
+    cursor: grab;
+    touch-action: none;
+    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .companion-fab .paw {
+    display: block;
+    width: 14px;
+    height: 14px;
+  }
+
+  .companion-fab:hover {
+    transform: scale(1.12);
+    border-color: #a8861c;
+  }
+
+  .companion-fab:focus-visible {
+    outline: 2px solid #6a5212;
+    outline-offset: 2px;
+  }
+
+  .companion-fab[aria-expanded="true"] {
+    border-color: #a8861c;
+    box-shadow:
+      0 0 0 2px rgb(0 0 0 / 12%),
+      0 0 0 4px rgb(0 0 0 / 10%),
+      0 2px 8px rgb(0 0 0 / 16%);
+  }
+
+  .companion-menu {
+    position: absolute;
+    right: -4px;
+    bottom: calc(100% + 12px);
+    display: grid;
+    min-width: 76px;
+    padding: 4px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--surface-primary);
+    box-shadow:
+      0 0 0 2px var(--surface-primary),
+      0 8px 22px var(--shadow-color);
+    animation: companion-menu-in 160ms ease;
+    transform-origin: bottom right;
+  }
+
+  /* 页宠靠屏幕上沿时菜单改往下弹 */
+  .note-companion.menu-below .companion-menu {
+    bottom: auto;
+    top: calc(100% + 14px);
+    transform-origin: top right;
+  }
+
+  .companion-menu[hidden] {
+    display: none;
+  }
+
+  .companion-menu-item {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: 7px;
+    color: var(--text-normal);
+    background: none;
+    font-size: 12px;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .companion-menu-item:hover {
+    color: var(--accent-strong);
+    background: var(--surface-hover);
+  }
+
+  @media (max-width: 680px) {
+    .note-companion { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+    .companion-button { width: 64px; height: 64px; }
+    .companion-bubble { bottom: 30px; }
+    .companion-fab { top: -5px; right: -5px; width: 20px; height: 20px; font-size: 9px; }
+    .note-companion.is-hidden { width: 20px; height: 20px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .companion-button.is-shaking { animation: none; }
+    .companion-menu { animation: none; }
+  }
+
+  @keyframes companion-menu-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes companion-shake {
+    0%, 100% { transform: rotate(0deg) translateX(0); }
+    25% { transform: rotate(-4deg) translateX(-2px); }
+    50% { transform: rotate(3deg) translateX(2px); }
+    75% { transform: rotate(-2deg) translateX(-1px); }
+  }
+
+</style>
+
+<style is:global>
+  /* ---------- 和我聊聊的对话框 ----------
+     聊天消息的节点是 JS 动态创建的，拿不到 Astro scoped 样式的
+     data-astro-cid 属性，所以聊天这块的样式必须放全局块才能生效。
+     类名都以 chat-/companion- 开头，不会撞到别的组件。 */
+  /* 默认悬在页宠正上方；拖过后改用 left/top（is-dragged），不受 right/bottom 影响 */
+  .companion-chat {
+    position: fixed;
+    z-index: 21;
+    right: 18px;
+    bottom: 104px;
+    display: flex;
+    flex-direction: column;
+    width: min(300px, calc(100vw - 24px));
+    height: min(360px, calc(100vh - 130px));
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: var(--surface-primary);
+    box-shadow:
+      0 0 0 2px var(--surface-primary),
+      0 10px 30px var(--shadow-color);
+    overflow: hidden;
+    animation: chat-panel-in 160ms ease;
+    transform-origin: bottom right;
+  }
+
+  @keyframes chat-panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .companion-chat.is-dragged {
+    right: auto;
+    bottom: auto;
+  }
+
+  .companion-chat[hidden] {
+    display: none;
+  }
+
+  /* 聊天期间页宠本体躲起来，关掉聊天框再原地回来 */
+  .note-companion.is-chatting .companion-button,
+  .note-companion.is-chatting .companion-fab {
+    display: none;
+  }
+
+  .chat-header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--surface-secondary);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .chat-header:active {
+    cursor: grabbing;
+  }
+
+  /* 问号、垃圾桶、叉共用的小图标按钮 */
+  .chat-icon-btn {
+    display: grid;
+    place-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    color: var(--text-muted);
+    background: none;
+    cursor: pointer;
+  }
+
+  .chat-icon-btn:hover {
+    color: var(--text-normal);
+    background: var(--surface-hover);
+  }
+
+  .chat-icon-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .chat-icon-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .chat-header .chat-close {
+    margin-left: auto;
+  }
+
+  .chat-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    object-fit: cover;
+    user-select: none;
+  }
+
+  .chat-close {
+    display: grid;
+    place-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 7px;
+    color: var(--text-muted);
+    background: none;
+    cursor: pointer;
+  }
+
+  .chat-close:hover {
+    color: var(--text-normal);
+    background: var(--surface-hover);
+  }
+
+  .chat-close:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .chat-close svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .chat-messages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 10px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .chat-msg {
+    display: flex;
+    align-items: flex-end;
+    gap: 7px;
+  }
+
+  .chat-msg-user {
+    justify-content: flex-end;
+  }
+
+  /* 狗的话带头像，气泡尖朝左指着头像；访客没有头像，只有气泡，尖朝右。
+     小狗气泡固定白底深字（黑色主题下也保持白色），访客气泡用主题色。 */
+  .chat-msg .chat-bubble {
+    position: relative;
+    max-width: min(200px, 76%);
+    padding: 8px 11px;
+    border: 1px solid rgb(0 0 0 / 8%);
+    border-radius: 12px 12px 12px 3px;
+    color: #333;
+    background: #fff;
+    font-size: 13.5px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .chat-msg-user .chat-bubble {
+    border-color: var(--accent);
+    border-radius: 12px 12px 3px 12px;
+    color: #fff;
+    background: var(--accent);
+  }
+
+  .chat-msg-dog .chat-bubble::before {
+    content: "";
+    position: absolute;
+    bottom: 9px;
+    left: -6px;
+    border: 6px solid transparent;
+    border-right-color: #fff;
+  }
+
+  .chat-msg-user .chat-bubble::after {
+    content: "";
+    position: absolute;
+    bottom: 9px;
+    right: -6px;
+    border: 6px solid transparent;
+    border-left-color: var(--accent);
+  }
+
+  .chat-note-links {
+    display: block;
+    margin-top: 2px;
+  }
+
+  .chat-note-links a {
+    color: #3f779e;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .chat-note-links a:hover {
+    color: var(--accent);
+  }
+
+  /* 「正在输入」的三个点 */
+  .chat-bubble.is-typing {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    padding: 10px 12px;
+  }
+
+  .chat-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    animation: chat-dot-blink 1.2s infinite ease-in-out;
+  }
+
+  .chat-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .chat-dot:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+
+  @keyframes chat-dot-blink {
+    0%,
+    60%,
+    100% {
+      opacity: 0.35;
+      transform: translateY(0);
+    }
+    30% {
+      opacity: 1;
+      transform: translateY(-2px);
+    }
+  }
+
+  .chat-form {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    padding: 8px;
+    border-top: 1px solid var(--border-color);
+    background: var(--surface-secondary);
+  }
+
+  .chat-input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    color: var(--text-normal);
+    background: var(--surface-primary);
+    font-size: 13px;
+  }
+
+  .chat-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .chat-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--graph-glow);
+  }
+
+  .chat-send {
+    padding: 7px 12px;
+    border: 0;
+    border-radius: 9px;
+    color: #fff;
+    background: var(--accent);
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .chat-send:hover {
+    background: var(--accent-strong);
+  }
+
+  .chat-send:focus-visible {
+    outline: 2px solid var(--accent-strong);
+    outline-offset: 2px;
+  }
+
+  /* 每日上限的恢复倒计时提示（触发后才出现） */
+  .chat-quota {
+    flex: none;
+    margin: 0;
+    padding: 4px 10px 0;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  .chat-quota[hidden] {
+    display: none;
+  }
+
+  /* 永久免责声明 */
+  .chat-disclaimer {
+    flex: none;
+    margin: 0;
+    padding: 4px 10px 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  @media (max-width: 680px) {
+    .companion-chat { right: 12px; bottom: 84px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .companion-chat { animation: none; }
+    .chat-dot { animation: none; }
+  }
+</style>

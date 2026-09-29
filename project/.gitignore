@@ -1,0 +1,9 @@
+node_modules/
+dist/
+website-comments-config.php
+.astro/
+src/content/notes/.obsidian/
+src/generated/notes.json
+public/generated/
+.DS_Store
+Thumbs.db
