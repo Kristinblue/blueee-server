@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-// 页宠聊天接口：把访客的消息转发给 DeepSeek，带上少量上下文和人设提示词。
+// 页宠聊天接口：把访客的消息转发给模型提供商，带上少量上下文和人设提示词。
 // 限流结构与 comments.php 一致：浏览器 cookie 一道闸、IP 一道闸，
 // 每道闸都有「最小间隔 / 5 分钟上限 / 24 小时上限」三层，事件存 MySQL。
 // AI 的风格、限制都在文件顶部这几个常量里，想调整直接改这里。
@@ -87,17 +87,20 @@ function note_catalog(): string
 }
 
 function system_prompt(string $idlePage = ''): string
-{
+{   
+    date_default_timezone_set('Asia/Shanghai');
+    $current_time = date('Y-m-d H:i:s');
     $catalog = note_catalog();
-    $prompt = '你是个人学习笔记网站上的电子宠物小狗，陪访客学习、闲聊放松。'
+    $prompt = '你是个人学习笔记网站上的电子宠物，是小何的助手小何是站长，是一个大学生，你的名字是小小何，陪访客学习、闲聊放松。'
         . '说话要求：口语化、轻松友好、自然；一条消息说完，不要列表、不要换行、不要 markdown、不要 emoji、不要颜文字；'
-        . '回复简短，一般不超过 40 个字；不要自称「俺」，不要用「汪」之类的拟声词，像普通小伙伴一样正常说话。'
-        . '网站内容是计算机视觉（OpenCV、Linux 等）学习笔记，目录：「' . $catalog . '」。'
+        . '回复简短，一般不超过 150 个字；不要用「汪」之类的拟声词，像普通小伙伴一样正常说话。'
+        . '网站内容是计算机视觉相关的（OpenCV、Linux 等）学习笔记，目录：「' . $catalog . '」。将来还会有新的'
         . '访客问站内内容时可以推荐目录里的笔记；不知道的就老实说不知道，不要编造；'
+        . '现在时间是「' . $current_time . '」。'
         . '遇到与学习无关的敏感话题就温和地带回学习本身。';
     if ($idlePage !== '') {
         $prompt .= '现在访客只是点了一下你，没有输入文字：你主动冒一句简短搭话，不超过 18 个字，'
-            . '可以结合当前页面「' . $idlePage . '」说点鼓励或吐槽的话，别每次都是问候语。';
+            . '可以结合当前页面「' . $idlePage . '」或者时间「' . $current_time . '」说点鼓励或吐槽的话，别每次都是问候语。不要总是说类似的';
     }
     return $prompt;
 }
@@ -299,7 +302,7 @@ try {
     );
     $reply = call_deepseek($messages, $idle ? CHAT_IDLE_MAX_TOKENS : CHAT_MAX_TOKENS);
     if ($reply === null) {
-        // 上游失败：告诉前端回落到本地台词，别让小狗失声
+        // 上游失败：告诉前端回落到本地台词
         error_log('Chat API: deepseek upstream failed');
         respond(502, ['error' => 'AI 暂时不可用', 'fallback' => true]);
     }

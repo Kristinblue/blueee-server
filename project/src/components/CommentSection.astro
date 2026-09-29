@@ -10,7 +10,7 @@ const { noteSlug } = Astro.props;
 
 <section class="comments" data-note-slug={noteSlug} aria-labelledby="comments-heading">
   <h2 id="comments-heading" class="comments-heading">留言区</h2>
-  <p class="comment-privacy">无需登录，不收集任何个人信息；昵称只绑定浏览器里的随机 Cookie，自己的评论可随时删除。</p>
+  <p class="comment-privacy">不收集任何个人信息；昵称只绑定浏览器里的随机 Cookie，自己的评论可删除。</p>
   <form class="comment-form">
     <p class="comment-identity" hidden>将以「<span class="comment-identity-name"></span>」的身份发言</p>
     <div class="comment-replying" hidden>

@@ -17,29 +17,15 @@ const SOURCE_DIR = path.join(projectRoot, "assets", "fonts");
 const OUT_DIR = path.join(projectRoot, "public", "generated", "fonts");
 const MANIFEST = path.join(projectRoot, ".font-slice-manifest.json");
 
-// 切片规则（RANGES、过滤逻辑）变化时 +1，强制重建缓存——
+// 切片规则（输出形态、过滤逻辑）变化时 +1，强制重建缓存——
 // 缓存签名只含字体文件和字符集，感知不到规则本身的变化
-const SLICE_RULES_VERSION = 2;
+const SLICE_RULES_VERSION = 3;
 
-// 与 Google Fonts 同思路的分段：拉丁/标点/符号单独成片，CJK 主区等宽细切
-const RANGES = [
-  [0x0020, 0x00ff], // 基础拉丁与符号
-  [0x0370, 0x03ff], // 希腊字母（颜文字常用 ω ε 等）
-  [0x2000, 0x206f], // 常用标点（省略号、破折号等）
-  [0x2190, 0x21ff], // 箭头（笔记里常见的 →）
-  [0x2200, 0x22ff], // 数学符号（∀ ∞ ≈ 等颜文字部件）
-  [0x2460, 0x24ff], // 带圈数字
-  [0x2500, 0x257f], // 制表符（代码块 ASCII 图）
-  [0x25a0, 0x27bf], // 几何图形、对错符号
-  [0x3000, 0x303f], // 中文标点（，。、「」）
-  [0x3220, 0x3247], // 带圈汉字数字
-  [0xf900, 0xfaff], // 兼容表意文字
-  [0xff00, 0xffef], // 全角形式
-];
-// CJK 统一表意文字 0x4e00–0x9fff 等宽细切（每段 ~0x160 码点）
-for (let start = 0x4e00; start < 0xa000; start += 0x160) {
-  RANGES.push([start, Math.min(start + 0x15f, 0x9fff)]);
-}
+// 曾经按 Google Fonts 思路把 CJK 细切成 144 片（每页几十个请求），
+// 但弱网/代理环境下随机挂掉一两个请求，那一片覆盖的字就回退系统字体，
+// 段落里楷体黑体混排——表现为「字体乱」。现在每个家族只出一个文件：
+// 字符集子集化照旧（体积不变），请求数从 144 降到 2，不再有局部缺字。
+const FONT_RANGE = [0x0020, 0xffff]; // 覆盖 BMP 全部（BMP 外如 emoji 回退系统字体）
 
 function pyftsubset(args) {
   const python = process.platform === "win32" ? "python" : "python3";
@@ -50,14 +36,6 @@ function pyftsubset(args) {
     child.on("error", reject);
     child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(`pyftsubset failed:\n${stderr}`))));
   });
-}
-
-async function runPool(tasks, limit) {
-  const queue = [...tasks];
-  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
-    while (queue.length) await queue.shift()();
-  });
-  await Promise.all(workers);
 }
 
 function rangeText(start, end) {
@@ -137,46 +115,33 @@ async function fontSignature(files) {
 }
 
 async function sliceFont({ srcFile, fontFamily, cssExtras, tag, charset }) {
-  const cssParts = [];
-  let slice = 0;
-  const tasks = [];
+  const outName = `${tag}-000.woff2`;
+  const outPath = path.join(OUT_DIR, outName);
+  const rangeCss = `U+${FONT_RANGE[0].toString(16).toUpperCase()}-${FONT_RANGE[1].toString(16).toUpperCase()}`;
 
-  for (const [start, end] of RANGES) {
-    const outName = `${tag}-${String(slice).padStart(3, "0")}.woff2`;
-    const outPath = path.join(OUT_DIR, outName);
-    const rangeCss = `U+${start.toString(16).toUpperCase()}-${end.toString(16).toUpperCase()}`;
-    slice += 1;
+  // 整个家族一次子集化：字符集之外的码点不进文件，浏览器命中范围时一次下载全量
+  const tempFile = path.join(os.tmpdir(), `slice-${tag}.txt`);
+  await fs.writeFile(tempFile, rangeTextLimited(FONT_RANGE[0], FONT_RANGE[1], charset), "utf8");
+  await pyftsubset([
+    srcFile,
+    `--text-file=${tempFile}`,
+    `--output-file=${outPath}`,
+    "--flavor=woff2",
+    "--layout-features=*",
+    "--no-hinting",
+    "--desubroutinize",
+  ]);
+  await fs.rm(tempFile, { force: true });
 
-    // 并行任务各用独立临时文件，避免读写竞态
-    const tempFile = path.join(os.tmpdir(), `slice-${tag}-${slice}.txt`);
-    tasks.push(async () => {
-      await fs.writeFile(tempFile, rangeTextLimited(start, end, charset), "utf8");
-      await pyftsubset([
-        srcFile,
-        `--text-file=${tempFile}`,
-        `--output-file=${outPath}`,
-        "--flavor=woff2",
-        "--layout-features=*",
-        "--no-hinting",
-        "--desubroutinize",
-      ]);
-      // 该片在字体里一个字形都没有时产物是空壳，直接丢掉、不写 CSS
-      const { size } = await fs.stat(outPath);
-      await fs.rm(tempFile, { force: true });
-      if (size < 400) {
-        await fs.rm(outPath, { force: true });
-        return;
-      }
-      cssParts.push({
-        css: `@font-face{font-family:"${fontFamily}";src:url("/generated/fonts/${outName}") format("woff2");font-style:normal;font-weight:400;font-display:swap;${cssExtras}unicode-range:${rangeCss};}`,
-        index: start,
-      });
-    });
+  // 字符集在源字体里一个字形都没有时产物是空壳，直接丢掉、不写 CSS
+  const { size } = await fs.stat(outPath);
+  if (size < 400) {
+    await fs.rm(outPath, { force: true });
+    return [];
   }
-
-  await runPool(tasks, 10);
-  cssParts.sort((a, b) => a.index - b.index);
-  return cssParts.map((part) => part.css);
+  return [
+    `@font-face{font-family:"${fontFamily}";src:url("/generated/fonts/${outName}") format("woff2");font-style:normal;font-weight:400;font-display:swap;${cssExtras}unicode-range:${rangeCss};}`,
+  ];
 }
 
 async function cacheValid(sources, charsetKey) {
