@@ -29,10 +29,10 @@ interface Props {
 const { note } = Astro.props;
 const tocTree = extractTocTree(note.html, note.title);
 
-// 「contribute」：跳到 blueee-server 仓库里这篇笔记的编辑页，访客用 GitHub 账号
+// 「contribute」：跳到 blueee-website 仓库里这篇笔记的编辑页，访客用 GitHub 账号
 // 即可 fork 并提交 Pull Request；换仓库 / 分支 / 笔记目录时改这一处即可。
 const GITHUB_EDIT_BASE =
-  "https://github.com/Kristinblue/blueee-server/edit/main/project/src/content/notes";
+  "https://github.com/Kristinblue/blueee-website/edit/main/project/src/content/notes";
 const encodePath = (value: string) => value.split("/").map(encodeURIComponent).join("/");
 const editUrl = note.sourcePath ? `${GITHUB_EDIT_BASE}/${encodePath(note.sourcePath)}` : null;
 const formatModified = (iso?: string) => {
@@ -43,10 +43,10 @@ const formatModified = (iso?: string) => {
 };
 const modifiedText = formatModified(note.lastModified);
 
-// 这两篇里页宠换个形象：投喂站着，FAQ 的使用技巧坐着
+// 碎碎念这两篇里页宠换个形象：投喂站着，使用说明坐着
 const COMPANION_IMAGES: Record<string, string> = {
   "碎碎念/投喂": "/media/home/stand_com.gif",
-  "FAQ/1.6 使用技巧": "/media/home/sit.gif",
+  "碎碎念/使用说明": "/media/home/sit.gif",
 };
 ---
 

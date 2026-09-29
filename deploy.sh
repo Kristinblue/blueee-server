@@ -53,7 +53,7 @@ tar -C project/dist -czf - . | ssh "$SSH_HOST" 'set -e
   chown -R www:www /www/wwwroot/website
   echo "线上文件已更新"'
 
-step "5/6 推送公开仓 blueee-server（源码）"
+step "5/6 推送公开仓 blueee-website（源码）"
 export http_proxy="$PROXY" https_proxy="$PROXY" GIT_TERMINAL_PROMPT=0
 git add -A
 if git diff --cached --quiet; then

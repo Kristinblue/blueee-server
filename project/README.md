@@ -18,9 +18,9 @@
 
 ## 笔记修改走 GitHub（contribute）
 
-每篇笔记右上角的「contribute」指向 `Kristinblue/blueee-server` 仓库里该笔记的编辑页，旁边显示笔记的上次修改时间（取该文件最后一次 git 提交时间，未提交时用文件修改时间）。访客（比如供稿的同学）点开后用自己的 GitHub 账号登录，修改内容提交 Pull Request；在 GitHub 上审核合并后，本地重新 `npm run build` 并上传 `dist/`，网站即更新。仓库地址、分支和笔记目录写在 `src/pages/notes/[...slug].astro` 顶部的 `GITHUB_EDIT_BASE`，改动只需改那一处。
+每篇笔记右上角的「contribute」指向 `Kristinblue/blueee-website` 仓库里该笔记的编辑页，旁边显示笔记的上次修改时间（取该文件最后一次 git 提交时间，未提交时用文件修改时间）。访客（比如供稿的同学）点开后用自己的 GitHub 账号登录，修改内容提交 Pull Request；在 GitHub 上审核合并后，本地重新 `npm run build` 并上传 `dist/`，网站即更新。仓库地址、分支和笔记目录写在 `src/pages/notes/[...slug].astro` 顶部的 `GITHUB_EDIT_BASE`，改动只需改那一处。
 
-注意：`blueee-server` 需要保持 **Public** 并包含完整项目源码（`project/` 整个目录，含 `src/content/notes/` 和图片），部署仍然只上传 `dist/` 里的内容——仓库是大家共同编辑的地方，不是部署物本身。仓库里不能出现 `website-comments-config.php`（数据库密码）、服务器工具脚本和发布压缩包，`.gitignore` 已配置排除。
+注意：`blueee-website` 需要保持 **Public** 并包含完整项目源码（`project/` 整个目录，含 `src/content/notes/` 和图片），部署仍然只上传 `dist/` 里的内容——仓库是大家共同编辑的地方，不是部署物本身。仓库里不能出现 `website-comments-config.php`（数据库密码）、服务器工具脚本和发布压缩包，`.gitignore` 已配置排除。
 
 ## 放置笔记
 
