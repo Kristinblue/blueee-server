@@ -10,6 +10,7 @@ const { noteSlug } = Astro.props;
 
 <section class="comments" data-note-slug={noteSlug} aria-labelledby="comments-heading">
   <h2 id="comments-heading" class="comments-heading">留言区</h2>
+  <p class="comment-privacy">无需登录，不收集任何个人信息；昵称只绑定浏览器里的随机 Cookie，自己的评论可随时删除。</p>
   <form class="comment-form">
     <p class="comment-identity" hidden>将以「<span class="comment-identity-name"></span>」的身份发言</p>
     <div class="comment-replying" hidden>
@@ -49,6 +50,7 @@ const { noteSlug } = Astro.props;
     content: string;
     createdAt: string;
     replyCount?: number;
+    mine?: boolean;
   }
 
   const section = document.querySelector<HTMLElement>(".comments");
@@ -283,6 +285,57 @@ const { noteSlug } = Astro.props;
         textarea.focus({ preventScroll: true });
       });
       meta.append(time, floor, replyButton);
+
+      if (comment.mine) {
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "comment-delete";
+        deleteButton.textContent = "删除";
+        let armTimer = 0;
+        deleteButton.addEventListener("click", async () => {
+          if (deleteButton.dataset.armed !== "1") {
+            deleteButton.dataset.armed = "1";
+            deleteButton.textContent = "确认删除";
+            deleteButton.classList.add("is-armed");
+            window.clearTimeout(armTimer);
+            armTimer = window.setTimeout(() => {
+              deleteButton.dataset.armed = "";
+              deleteButton.textContent = "删除";
+              deleteButton.classList.remove("is-armed");
+            }, 4000);
+            return;
+          }
+          window.clearTimeout(armTimer);
+          deleteButton.disabled = true;
+          try {
+            const response = await fetch("/api/comments.php", {
+              method: "DELETE",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ note, id: String(comment.id) }),
+            });
+            const data = (await response.json()) as { ok?: boolean; error?: string };
+            if (!response.ok) throw new Error(data.error || "删除失败，请稍后重试。");
+            item.remove();
+            if (threadRoot !== undefined) {
+              const wrap = item.closest<HTMLElement>(".comment-replies");
+              if (wrap) {
+                const count = Math.max(0, Number(wrap.dataset.count ?? "1") - 1);
+                wrap.dataset.count = String(count);
+                repliesToggleText(wrap);
+                if (count === 0) wrap.remove();
+              }
+            } else if (!list.querySelector(".comment-item")) {
+              list.textContent = "还没有评论，来留下第一条吧。";
+            }
+            showFeedback("评论已删除。");
+          } catch (error) {
+            deleteButton.disabled = false;
+            showFeedback(error instanceof Error ? error.message : "删除失败，请稍后重试。", true);
+          }
+        });
+        meta.append(deleteButton);
+      }
       main.append(nameRow, body, expand, meta);
       if (threadRoot === undefined && (comment.replyCount ?? 0) > 0) {
         main.append(makeReplies(comment.id, comment.replyCount ?? 0));

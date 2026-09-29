@@ -50,7 +50,7 @@ tar -C project/dist -czf - . | ssh "$SSH_HOST" 'set -e
   shopt -s dotglob nullglob
   mv "$tmp"/* /www/wwwroot/website/
   rmdir "$tmp"
-  chown -R www:www /www/wwwroot/website
+  find /www/wwwroot/website -mindepth 1 ! -name ".user.ini" -exec chown www:www {} +
   echo "线上文件已更新"'
 
 step "5/6 推送公开仓 blueee-website（源码）"

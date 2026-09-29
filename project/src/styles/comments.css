@@ -120,6 +120,11 @@
 .comment-ref:hover { color: var(--accent-strong); text-decoration: underline; }
 .comment-reply { padding: 0; color: var(--comment-hint); background: transparent; border: 0; cursor: pointer; font-size: 0.78rem; }
 .comment-reply:hover { color: var(--accent-strong); }
+.comment-delete { padding: 0; color: var(--comment-hint); background: transparent; border: 0; cursor: pointer; font-size: 0.78rem; }
+.comment-delete:hover { color: #bd5757; }
+.comment-delete.is-armed { color: #bd5757; font-weight: 600; }
+.comment-delete:disabled { cursor: wait; opacity: 0.6; }
+.comment-privacy { margin: -12px 0 16px; color: var(--comment-hint); font-size: 0.8rem; }
 .comment-replies { margin-top: 12px; padding-left: 16px; border-left: 2px solid var(--border-color); }
 .comment-replies-toggle { display: block; margin: 0 0 4px; padding: 2px 0; color: var(--accent); background: transparent; border: 0; cursor: pointer; font-size: 0.8rem; }
 .comment-replies-toggle:hover { color: var(--accent-strong); }

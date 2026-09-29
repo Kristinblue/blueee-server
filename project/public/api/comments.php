@@ -36,7 +36,7 @@ function valid_note(string $note): bool
     return false;
 }
 
-function public_comment(array $row, ?int $replyCount = null): array
+function public_comment(array $row, ?int $replyCount = null, ?bool $mine = null): array
 {
     $comment = [
         'id' => (int) $row['id'],
@@ -47,6 +47,9 @@ function public_comment(array $row, ?int $replyCount = null): array
     ];
     if ($replyCount !== null) {
         $comment['replyCount'] = $replyCount;
+    }
+    if ($mine !== null) {
+        $comment['mine'] = $mine;
     }
     return $comment;
 }
@@ -162,6 +165,27 @@ function find_comment_root(PDO $db, int $id, string $note): ?int
     return $row['root_id'] === null ? (int) $row['id'] : (int) $row['root_id'];
 }
 
+function json_body(array $requiredKeys): array
+{
+    if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) {
+        respond(415, ['error' => '请使用 JSON 提交请求。']);
+    }
+    $raw = file_get_contents('php://input', false, null, 0, 8193);
+    if ($raw === false || strlen($raw) > 8192) {
+        respond(413, ['error' => '请求内容太长。']);
+    }
+    $input = json_decode($raw, true);
+    if (!is_array($input)) {
+        respond(400, ['error' => '请求格式无效。']);
+    }
+    foreach ($requiredKeys as $key) {
+        if (!isset($input[$key]) || !is_string($input[$key])) {
+            respond(400, ['error' => '请求格式无效。']);
+        }
+    }
+    return $input;
+}
+
 function limit_result(array $times, float $now, int $gap, int $fiveMinuteMax, int $dayMax, string $name): ?array
 {
     if ($times && $now - $times[0] <= $gap) {
@@ -206,15 +230,20 @@ try {
     ]);
     $db->exec("SET time_zone = '+00:00'");
 
+    $whoKey = null;
+    $rawVisitor = $_COOKIE['comment_visitor'] ?? '';
+    if (is_string($rawVisitor) && preg_match('/^[a-f0-9]{64}$/D', $rawVisitor)) {
+        $whoKey = hash_hmac('sha256', "browser\0" . $rawVisitor, $config['hash_key']);
+    }
+    $isMine = static fn (?string $authorKey): bool => $whoKey !== null && $authorKey !== null && hash_equals($authorKey, $whoKey);
+
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $note = $_GET['note'] ?? '';
         if (!is_string($note) || !valid_note($note)) {
             respond(400, ['error' => '这篇笔记不存在。']);
         }
         $visitorName = null;
-        $rawVisitor = $_COOKIE['comment_visitor'] ?? '';
-        if (is_string($rawVisitor) && preg_match('/^[a-f0-9]{64}$/D', $rawVisitor)) {
-            $whoKey = hash_hmac('sha256', "browser\0" . $rawVisitor, $config['hash_key']);
+        if ($whoKey !== null) {
             $who = $db->prepare('SELECT display_name FROM comment_identities WHERE author_key = ?');
             $who->execute([$whoKey]);
             $found = $who->fetchColumn();
@@ -233,7 +262,7 @@ try {
             if ($after !== null && (!is_string($after) || !ctype_digit($after) || (int) $after < 1)) {
                 respond(400, ['error' => '分页参数无效。']);
             }
-            $sql = "SELECT id, parent_id, author_name, content, created_at FROM comments WHERE note_slug = ? AND root_id = ? AND status = 'visible'";
+            $sql = "SELECT id, parent_id, author_key, author_name, content, created_at FROM comments WHERE note_slug = ? AND root_id = ? AND status = 'visible'";
             $params = [$note, $rootId];
             if ($after !== null) {
                 $sql .= ' AND id > ?';
@@ -246,7 +275,7 @@ try {
             $hasMore = count($rows) > 20;
             $rows = array_slice($rows, 0, 20);
             respond(200, [
-                'comments' => array_map('public_comment', $rows),
+                'comments' => array_map(static fn (array $row): array => public_comment($row, null, $isMine($row['author_key'] ?? null)), $rows),
                 'visitorName' => $visitorName,
                 'nextAfter' => $hasMore ? (int) end($rows)['id'] : null,
             ]);
@@ -255,7 +284,7 @@ try {
         if ($before !== null && (!is_string($before) || !ctype_digit($before) || (int) $before < 1)) {
             respond(400, ['error' => '分页参数无效。']);
         }
-        $sql = "SELECT id, parent_id, author_name, content, created_at FROM comments WHERE note_slug = ? AND parent_id IS NULL AND status = 'visible'";
+        $sql = "SELECT id, parent_id, author_key, author_name, content, created_at FROM comments WHERE note_slug = ? AND parent_id IS NULL AND status = 'visible'";
         $params = [$note];
         if ($before !== null) {
             $sql .= ' AND id < ?';
@@ -276,32 +305,53 @@ try {
             }
         }
         respond(200, [
-            'comments' => array_map(static fn (array $row): array => public_comment($row, $replyCounts[(int) $row['id']] ?? 0), $rows),
+            'comments' => array_map(static fn (array $row): array => public_comment($row, $replyCounts[(int) $row['id']] ?? 0, $isMine($row['author_key'] ?? null)), $rows),
             'visitorName' => $visitorName,
             'nextBefore' => $hasMore ? (int) end($rows)['id'] : null,
         ]);
     }
 
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        header('Allow: GET, POST');
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
+        header('Allow: GET, POST, DELETE');
         respond(405, ['error' => '不支持此请求方式。']);
     }
-    if (stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) {
-        respond(415, ['error' => '请使用 JSON 提交评论。']);
-    }
-    $raw = file_get_contents('php://input', false, null, 0, 8193);
-    if ($raw === false || strlen($raw) > 8192) {
-        respond(413, ['error' => '评论内容太长。']);
-    }
-    $input = json_decode($raw, true);
-    if (!is_array($input) || !isset($input['note'], $input['content']) || !is_string($input['note']) || !is_string($input['content'])) {
-        respond(400, ['error' => '评论格式无效。']);
-    }
+    $input = json_body(['note']);
     $note = $input['note'];
-    $content = trim($input['content']);
     if (!valid_note($note)) {
         respond(400, ['error' => '这篇笔记不存在。']);
     }
+
+    if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+        $id = $input['id'] ?? null;
+        if (!is_string($id) || !ctype_digit($id) || (int) $id < 1) {
+            respond(400, ['error' => '评论参数无效。']);
+        }
+        $stmt = $db->prepare('SELECT id, author_key, root_id FROM comments WHERE id = ? AND note_slug = ?');
+        $stmt->execute([(int) $id, $note]);
+        $row = $stmt->fetch();
+        if (!$row || $row['author_key'] === null || $whoKey === null || !hash_equals($row['author_key'], $whoKey)) {
+            respond(404, ['error' => '评论不存在或无法删除。']);
+        }
+        if ($row['root_id'] === null) {
+            // 顶层评论：楼下有回复时只隐藏（保留别人的回复数据），否则直接删除
+            $cnt = $db->prepare('SELECT COUNT(*) FROM comments WHERE root_id = ?');
+            $cnt->execute([(int) $row['id']]);
+            if ((int) $cnt->fetchColumn() > 0) {
+                $db->prepare("UPDATE comments SET status = 'hidden' WHERE id = ?")->execute([(int) $row['id']]);
+            } else {
+                $db->prepare('DELETE FROM comments WHERE id = ?')->execute([(int) $row['id']]);
+            }
+        } else {
+            $db->prepare('DELETE FROM comments WHERE id = ?')->execute([(int) $row['id']]);
+        }
+        // 限流记录刻意保留：删评论不能重置发言额度
+        respond(200, ['ok' => true]);
+    }
+
+    if (!isset($input['content']) || !is_string($input['content'])) {
+        respond(400, ['error' => '评论格式无效。']);
+    }
+    $content = trim($input['content']);
     $length = comment_length($content);
     if ($length < 1 || $length > 1000) {
         respond(400, ['error' => '评论需要在 1 到 1000 字之间。']);
@@ -363,7 +413,7 @@ try {
     }
     $stmt = $db->prepare('SELECT id, parent_id, author_name, content, created_at FROM comments WHERE id = ?');
     $stmt->execute([$id]);
-    respond(201, ['comment' => public_comment($stmt->fetch())]);
+    respond(201, ['comment' => public_comment($stmt->fetch(), null, true)]);
 } catch (Throwable $error) {
     error_log('Comment API: ' . $error->getMessage());
     respond(503, ['error' => '评论服务暂时不可用，请稍后重试。']);
