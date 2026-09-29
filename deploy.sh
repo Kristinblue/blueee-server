@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # blueee 网站一键部署
 # 用法（在 Git Bash 中，于本仓库根目录执行）：
-#   ./deploy.sh              # 测试 → 构建 → 备份数据库 → 上传线上 → 推送两个仓库
-#   ./deploy.sh "修了滤波笔记"  # 同上，并把这句话写进 git 提交说明
+#   ./deploy.sh              # 测试 → 构建 → 备份数据库 → 上传线上 → 填写提交说明 → 推送两个仓库
+#   ./deploy.sh "修了滤波笔记"  # 同上，提交说明直接用参数里的这句
 #
-# 前提：v2ray 开着「允许局域网连接」（git 推送走 127.0.0.1:10808）；
+# 前提：v2ray 开着（git 推送走 127.0.0.1:10808）；
 #       ~/.ssh/config 里有 blueee-server 别名。服务器文件不需要代理。
 
 set -euo pipefail
@@ -17,6 +17,13 @@ OPS_DIR="/d/my_project/server-ops" # 私有运维仓（blueee-server-pri）的�
 
 cd "$(dirname "$0")"
 step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
+
+# 提交说明：优先用第一个参数；没传就在动手前问一次（避免构建完才卡在等输入）
+MSG="${1:-}"
+if [ -z "$MSG" ]; then
+  read -r -p "请输入本次提交说明: " MSG
+  MSG="${MSG:-网站更新 $(date '+%F %H:%M')}"
+fi
 
 step "1/6 运行测试"
 (cd project && npm test)
@@ -52,7 +59,7 @@ git add -A
 if git diff --cached --quiet; then
   echo "公开仓无改动"
 else
-  git commit -q -m "部署 $(date '+%F %H:%M')：${1:-网站更新}"
+  git commit -q -m "$MSG"
 fi
 git push -q origin main
 
