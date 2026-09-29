@@ -10,7 +10,7 @@ const { noteSlug } = Astro.props;
 
 <section class="comments" data-note-slug={noteSlug} aria-labelledby="comments-heading">
   <h2 id="comments-heading" class="comments-heading">留言区</h2>
-  <p class="comment-privacy">不收集任何个人信息；昵称只绑定浏览器里的随机 Cookie，自己的评论可删除。</p>
+  <p class="comment-privacy">不收集任何个人信息；昵称只绑定浏览器里的随机 Cookie。</p>
   <form class="comment-form">
     <p class="comment-identity" hidden>将以「<span class="comment-identity-name"></span>」的身份发言</p>
     <div class="comment-replying" hidden>
@@ -384,7 +384,7 @@ const { noteSlug } = Astro.props;
         more.hidden = nextBefore === null;
         setVisitorName(data.visitorName);
       } catch (error) {
-        if (!append) list.textContent = "评论加载失败，请刷新页面重试。";
+        if (!append) list.textContent = "评论加载失败，可能关闭了服务。";
         else showFeedback(error instanceof Error ? error.message : "评论加载失败。", true);
       } finally {
         loading = false;
@@ -427,7 +427,7 @@ const { noteSlug } = Astro.props;
           addReplyToThread(target.rootId, data.comment);
           setReplyTo(null);
         } else {
-          if (list.textContent === "还没有评论，来留下第一条吧。" || list.textContent === "评论加载失败，请刷新页面重试。") list.replaceChildren();
+          if (list.textContent === "还没有评论，来留下第一条吧。" || list.textContent === "评论加载失败，可能关闭了服务。") list.replaceChildren();
           list.prepend(makeComment(data.comment));
         }
         setVisitorName(data.comment.authorName);
